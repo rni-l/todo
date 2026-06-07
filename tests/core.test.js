@@ -46,3 +46,37 @@ test('task update can clear optional fields', async () => {
   assert.equal(updated.reminderAt, null);
   assert.equal(updated.recurrence, null);
 });
+
+test('task update persists edited subtask titles', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({
+    title: 'subtask edits',
+    subtasks: [{ id: 'sub_keep', title: 'Before', completed: false, order: 1 }]
+  });
+  const updated = await store.updateTask(task.id, {
+    subtasks: [{ id: 'sub_keep', title: 'After', completed: false, order: 1 }]
+  });
+  assert.equal(updated.subtasks.length, 1);
+  assert.equal(updated.subtasks[0].id, 'sub_keep');
+  assert.equal(updated.subtasks[0].title, 'After');
+});
+
+test('filter update preserves pinned state when omitted', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const filter = await store.createFilter({
+    name: 'Pinned filter',
+    pinned: true,
+    conditions: [{ field: 'priority', operator: 'is', value: 'high' }]
+  });
+  const updated = await store.updateFilter(filter.id, {
+    name: 'Edited pinned filter',
+    conditions: [{ field: 'due', operator: 'is', value: 'today' }]
+  });
+  assert.equal(updated.name, 'Edited pinned filter');
+  assert.equal(updated.pinned, true);
+  assert.deepEqual(updated.conditions, [{ field: 'due', operator: 'is', value: 'today' }]);
+});

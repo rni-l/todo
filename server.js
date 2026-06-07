@@ -198,6 +198,16 @@ function firstField(parts, name) {
   return parts.find(part => part.name === name && !part.filename)?.content.toString('utf8') || '';
 }
 
+function parseImportJson(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const error = new Error('Invalid import JSON');
+    error.status = 400;
+    throw error;
+  }
+}
+
 async function serveStatic(req, res, url) {
   const isPrototype = url.pathname.startsWith('/prototype/');
   const base = isPrototype ? prototypeDir : publicDir;
@@ -534,9 +544,9 @@ async function importPayload(req) {
         error.status = 400;
         throw error;
       }
-      return JSON.parse(raw);
+      return parseImportJson(raw);
     }
-    return JSON.parse(file.content.toString('utf8'));
+    return parseImportJson(file.content.toString('utf8'));
   }
   return readJson(req);
 }

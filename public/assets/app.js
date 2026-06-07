@@ -8,7 +8,9 @@ const state = {
   projectModalOpen: false,
   tagModalOpen: false,
   filterModalOpen: false,
+  filterEditingId: null,
   importPreview: null,
+  taskModalDefaults: {},
   saveTimer: null,
   saveState: '已保存',
   calendarMode: 'week',
@@ -105,6 +107,9 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.matches('[data-subtask-title]')) {
+    updateSubtaskTitle(target.dataset.taskId, target.dataset.subtaskId, target.value);
+  }
   if (target.matches('[data-drawer-select]')) {
     if (target.dataset.drawerSelect === 'projectId') {
       updateTask(state.selectedTaskId, { projectId: target.value || null, sectionId: null });
@@ -969,7 +974,7 @@ function drawer(task) {
           ${(task.subtasks || []).map(subtask => `
             <div class="subtask">
               <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-action="toggle-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
-              <input type="text" value="${escapeHtml(subtask.title)}" data-action="noop" data-subtask-title="${subtask.id}" />
+              <input type="text" value="${escapeHtml(subtask.title)}" data-subtask-title data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
               <button class="tiny-action" type="button" data-action="delete-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}">删除</button>
             </div>
           `).join('') || '<p class="page-subtitle" style="margin:0;">还没有子任务。</p>'}
@@ -994,12 +999,15 @@ function drawer(task) {
 }
 
 function taskModal() {
+  const defaults = taskModalDefaults();
   return modal('taskModalOpen', '新建任务', `
     <form class="dialog-body" data-submit="create-task">
       <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" /></div>
-      <div class="field"><label>项目</label><select class="select" name="projectId"><option value="">收件箱</option>${state.data.projects.map(project => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>日期</label><input class="input" name="dueDate" type="date" value="${todayISO()}" /></div>
+      <div class="field"><label>项目</label><select class="select" name="projectId"><option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${state.data.projects.map(project => `<option value="${project.id}" ${project.id === defaults.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>日期</label><input class="input" name="dueDate" type="date" value="${escapeHtml(defaults.dueDate || '')}" /></div>
       <div class="field"><label>优先级</label><select class="select" name="priority"><option value="none">普通</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></div>
+      <input type="hidden" name="sectionId" value="${escapeHtml(defaults.sectionId || '')}" />
+      <input type="hidden" name="tagId" value="${escapeHtml(defaults.tagId || '')}" />
       <button class="primary-add" type="submit">创建任务</button>
     </form>
   `);
@@ -1026,12 +1034,15 @@ function tagModal() {
 }
 
 function filterModal() {
-  return modal('filterModalOpen', '智能过滤器', `
+  const editing = state.data.filters.find(filter => filter.id === state.filterEditingId) || null;
+  const condition = editing?.conditions?.[0] || {};
+  const conditionValue = condition.value === undefined ? '' : String(condition.value);
+  return modal('filterModalOpen', editing ? '编辑智能过滤器' : '智能过滤器', `
     <form class="dialog-body" data-submit="create-filter">
-      <div class="field"><label>名称</label><input class="input" name="name" required placeholder="例如：本周高优先级" /></div>
-      <div class="field"><label>字段</label><select class="select" name="field"><option value="priority">优先级</option><option value="projectId">项目</option><option value="tag">标签</option><option value="due">日期</option><option value="hasAttachment">有附件</option><option value="hasReminder">有提醒</option></select></div>
-      <div class="field"><label>值</label><input class="input" name="value" placeholder="high / 项目ID / 标签ID / today / upcoming / true" /></div>
-      <button class="primary-add" type="submit">保存过滤器</button>
+      <div class="field"><label>名称</label><input class="input" name="name" required placeholder="例如：本周高优先级" value="${escapeHtml(editing?.name || '')}" /></div>
+      <div class="field"><label>字段</label><select class="select" name="field">${['priority','projectId','tag','due','hasAttachment','hasReminder'].map(field => `<option value="${field}" ${field === condition.field ? 'selected' : ''}>${conditionFieldLabel(field)}</option>`).join('')}</select></div>
+      <div class="field"><label>值</label><input class="input" name="value" placeholder="high / 项目ID / 标签ID / today / upcoming / true" value="${escapeHtml(conditionValue)}" /></div>
+      <button class="primary-add" type="submit">${editing ? '保存修改' : '保存过滤器'}</button>
     </form>
   `);
 }
@@ -1089,10 +1100,11 @@ async function handleAction(action, payload, target) {
     if (action === 'open-command') { state.commandOpen = true; return render(); }
     if (action === 'close-command') { state.commandOpen = false; return render(); }
     if (action === 'close-modals') { closeModals(); return render(); }
-    if (action === 'open-task-modal') { state.taskModalOpen = true; return render(); }
+    if (action === 'open-task-modal') { state.taskModalDefaults = defaultsFromPayload(payload); state.taskModalOpen = true; return render(); }
     if (action === 'open-project-modal') { state.projectModalOpen = true; return render(); }
     if (action === 'open-tag-modal') { state.tagModalOpen = true; return render(); }
-    if (action === 'open-filter-modal' || action === 'edit-filter') { state.filterModalOpen = true; return render(); }
+    if (action === 'open-filter-modal') { state.filterEditingId = null; state.filterModalOpen = true; return render(); }
+    if (action === 'edit-filter') { state.filterEditingId = payload.id || null; state.filterModalOpen = true; return render(); }
     if (action === 'close-drawer') { closeDrawer(); return render(); }
     if (action === 'select-task') { state.selectedTaskId = payload.taskId || target.closest('[data-task-id]')?.dataset.taskId; state.commandOpen = false; return render(); }
     if (action === 'toggle-task') {
@@ -1190,19 +1202,22 @@ async function handleSubmit(action, form) {
       const field = formData.get('field');
       let value = formData.get('value');
       if (value === 'true') value = true;
-      const response = await api('/api/filters', {
-        method: 'POST',
-        body: {
-          name: formData.get('name'),
-          pinned: true,
-          conditions: [{ field, operator: 'is', value }],
-          sort: 'dueDate',
-          group: 'date'
-        }
-      });
+      if (value === 'false') value = false;
+      const body = {
+        name: formData.get('name'),
+        pinned: state.filterEditingId ? undefined : true,
+        conditions: [{ field, operator: 'is', value }],
+        sort: 'dueDate',
+        group: 'date'
+      };
+      const response = state.filterEditingId
+        ? await api(`/api/filters/${state.filterEditingId}`, { method: 'PATCH', body })
+        : await api('/api/filters', { method: 'POST', body });
+      const filterId = state.filterEditingId || response.filter.id;
+      state.filterEditingId = null;
       closeModals();
       await refreshFromPayload(response);
-      navigate(`filter/${response.filter.id}`);
+      navigate(`filter/${filterId}`);
       return;
     }
     if (action === 'change-password') {
@@ -1286,6 +1301,16 @@ async function addSubtask(id) {
   await updateTask(id, { subtasks });
 }
 
+async function updateSubtaskTitle(taskId, subtaskId, title) {
+  const task = taskById(taskId);
+  if (!task) return;
+  const subtasks = (task.subtasks || []).map(subtask => (
+    subtask.id === subtaskId ? { ...subtask, title: String(title || '').trim() || '未命名子任务' } : subtask
+  ));
+  await updateTask(taskId, { subtasks }, { silent: true });
+  showToast('子任务已保存');
+}
+
 async function toggleSubtask(taskId, subtaskId) {
   const task = taskById(taskId);
   if (!task) return;
@@ -1322,11 +1347,18 @@ let pendingImportFile = null;
 async function previewImport(file) {
   if (!file) return;
   pendingImportFile = file;
-  const formData = new FormData();
-  formData.set('file', file);
-  const response = await api('/api/import/preview', { method: 'POST', body: formData });
-  state.importPreview = response.preview;
-  render();
+  try {
+    const formData = new FormData();
+    formData.set('file', file);
+    const response = await api('/api/import/preview', { method: 'POST', body: formData });
+    state.importPreview = response.preview;
+    render();
+  } catch (error) {
+    pendingImportFile = null;
+    state.importPreview = null;
+    showToast(error.message || '导入预检失败');
+    render();
+  }
 }
 
 async function confirmImport() {
@@ -1342,11 +1374,15 @@ async function confirmImport() {
 
 async function importAttachmentZip(file) {
   if (!file) return;
-  const formData = new FormData();
-  formData.set('file', file);
-  const response = await api('/api/import/attachments', { method: 'POST', body: formData });
-  await refreshFromPayload(response);
-  showToast(`附件匹配完成：${response.summary.matched} 个`);
+  try {
+    const formData = new FormData();
+    formData.set('file', file);
+    const response = await api('/api/import/attachments', { method: 'POST', body: formData });
+    await refreshFromPayload(response);
+    showToast(`附件匹配完成：${response.summary.matched} 个`);
+  } catch (error) {
+    showToast(error.message || '附件导入失败');
+  }
 }
 
 async function updateSettings(patch) {
@@ -1449,6 +1485,8 @@ function closeModals() {
   state.projectModalOpen = false;
   state.tagModalOpen = false;
   state.filterModalOpen = false;
+  state.filterEditingId = null;
+  state.taskModalDefaults = {};
 }
 
 function showToast(message) {
@@ -1469,6 +1507,25 @@ function syncToast() {
     state.pendingToast = '';
     requestAnimationFrame(() => showToast(message));
   }
+}
+
+function taskModalDefaults() {
+  return {
+    dueDate: todayISO(),
+    projectId: '',
+    sectionId: '',
+    tagId: '',
+    ...state.taskModalDefaults
+  };
+}
+
+function defaultsFromPayload(payload = {}) {
+  return {
+    dueDate: payload.dueDate || todayISO(),
+    projectId: payload.projectId || '',
+    sectionId: payload.sectionId || '',
+    tagId: payload.tagId || ''
+  };
 }
 
 function openTasks() {
