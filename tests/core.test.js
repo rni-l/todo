@@ -47,6 +47,21 @@ test('task update can clear optional fields', async () => {
   assert.equal(updated.recurrence, null);
 });
 
+test('task urgent flag defaults false and can be updated', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+
+  const task = await store.createTask({ title: 'urgent marker' });
+  assert.equal(task.urgent, false);
+
+  const marked = await store.updateTask(task.id, { urgent: true });
+  assert.equal(marked.urgent, true);
+
+  const cleared = await store.updateTask(task.id, { urgent: false });
+  assert.equal(cleared.urgent, false);
+});
+
 test('task update persists edited subtask titles', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });

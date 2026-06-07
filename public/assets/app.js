@@ -23,7 +23,9 @@ const navItems = [
   { id: 'today', label: '今日', icon: '☑', mobile: true },
   { id: 'inbox', label: '收件箱', icon: '▣', mobile: true },
   { id: 'upcoming', label: '即将到来', icon: '◷' },
+  { id: 'recent', label: '最近7天', icon: '↺', mobile: true, mobileLabel: '近7天' },
   { id: 'calendar', label: '日历', icon: '▦', mobile: true },
+  { id: 'matrix', label: '四象限', icon: '⊞' },
   { id: 'projects', label: '项目', icon: '●', mobile: true },
   { id: 'tags', label: '标签', icon: '#'},
   { id: 'filters', label: '智能过滤器', icon: '⚑'},
@@ -35,7 +37,9 @@ const routeTitles = {
   today: ['TODAY · 今日执行', '今日'],
   inbox: ['INBOX · 默认捕获容器', '收件箱'],
   upcoming: ['UPCOMING · 轻量计划', '即将到来'],
+  recent: ['RECENT · 最近7天', '最近7天'],
   calendar: ['CALENDAR · 日期分布', '日历'],
+  matrix: ['MATRIX · 重要紧急', '四象限'],
   projects: ['PROJECTS · 任务组织', '项目'],
   project: ['PROJECT · 项目详情', '项目详情'],
   tags: ['TAGS · 横向组织', '标签'],
@@ -103,6 +107,9 @@ document.addEventListener('input', event => {
   if (target.matches('[data-command-input]')) {
     renderCommandResults(target.value);
   }
+  if (target.matches('[data-autosize]')) {
+    autosizeTextarea(target);
+  }
 });
 
 document.addEventListener('change', event => {
@@ -116,10 +123,6 @@ document.addEventListener('change', event => {
     } else {
       updateTask(state.selectedTaskId, { [target.dataset.drawerSelect]: target.value || null });
     }
-  }
-  if (target.matches('[data-drawer-tags]')) {
-    const tags = [...target.selectedOptions].map(option => option.value);
-    updateTask(state.selectedTaskId, { tags });
   }
   if (target.matches('[data-setting-select]')) {
     updateSettings({ [target.dataset.settingSelect]: target.value });
@@ -266,6 +269,7 @@ function render() {
     <div class="toast" data-toast></div>
   `;
   syncToast();
+  autosizeTextareas();
 }
 
 function renderLogin(error) {
@@ -319,7 +323,7 @@ function sidebar() {
       <button class="primary-add" type="button" data-action="open-task-modal">+ 新建任务</button>
       <nav class="nav-block" aria-label="主要视图">
         <div class="nav-heading">主要视图</div>
-        ${navItems.slice(0, 5).map(item => navButton(item, counts[item.id])).join('')}
+        ${navItems.slice(0, 6).map(item => navButton(item, counts[item.id])).join('')}
       </nav>
       <nav class="nav-block" aria-label="组织">
         <div class="nav-heading">组织</div>
@@ -394,7 +398,9 @@ function mainView() {
     groups: [taskGroup('未整理', openTasks().filter(task => !task.projectId), 'success')]
   });
   if (route.name === 'upcoming') return upcomingPage();
+  if (route.name === 'recent') return recentPage();
   if (route.name === 'calendar') return calendarPage();
+  if (route.name === 'matrix') return matrixPage();
   if (route.name === 'projects') return projectsPage();
   if (route.name === 'project') return projectDetailPage(route.id);
   if (route.name === 'tags') return tagsPage();
@@ -502,6 +508,7 @@ function taskRow(task) {
         <span class="task-meta">
           ${task.dueDate ? `<span class="mini-tag">${escapeHtml(shortDate(task.dueDate))}</span>` : ''}
           ${task.reminderAt ? `<span class="mini-tag">${escapeHtml(formatTime(task.reminderAt))}</span>` : ''}
+          ${task.urgent ? '<span class="mini-tag urgent">紧急</span>' : ''}
           ${project ? `<span class="mini-tag">${escapeHtml(project.name)}</span>` : '<span class="mini-tag">收件箱</span>'}
           ${tags.map(tag => `<span class="mini-tag">#${escapeHtml(tag.name)}</span>`).join('')}
           ${attachmentCount ? `<span class="mini-tag">${attachmentCount} 个附件</span>` : ''}
@@ -510,9 +517,32 @@ function taskRow(task) {
       </span>
       <span class="task-actions">
         <span class="tiny-action" data-action="postpone-task" data-id="${task.id}">明天</span>
+        <span class="tiny-action" data-action="toggle-urgent" data-id="${task.id}">${task.urgent ? '取消紧急' : '标紧急'}</span>
         <span class="tiny-action" data-action="cycle-priority" data-id="${task.id}">优先级</span>
       </span>
     </button>
+  `;
+}
+
+function selectControl(attrs, optionsHtml) {
+  return `<span class="select-wrap"><select class="select" ${attrs}>${optionsHtml}</select></span>`;
+}
+
+function tagPicker(selectedIds = [], { mode = 'form', taskId = '' } = {}) {
+  const selected = new Set(selectedIds);
+  if (!state.data.tags.length) {
+    return '<p class="page-subtitle" style="margin:0;">还没有标签。</p>';
+  }
+  return `
+    <div class="tag-picker" data-tag-picker="${mode}">
+      ${state.data.tags.map(tag => {
+        const active = selected.has(tag.id);
+        if (mode === 'drawer') {
+          return `<button class="tag-choice ${active ? 'active' : ''}" type="button" data-action="toggle-task-tag" data-task-id="${taskId}" data-tag-id="${tag.id}"><span class="project-dot ${tag.color || ''}"></span>#${escapeHtml(tag.name)}</button>`;
+        }
+        return `<label class="tag-choice ${active ? 'active' : ''}"><input type="checkbox" name="tags" value="${tag.id}" ${active ? 'checked' : ''} /><span class="project-dot ${tag.color || ''}"></span>#${escapeHtml(tag.name)}</label>`;
+      }).join('')}
+    </div>
   `;
 }
 
@@ -543,6 +573,67 @@ function upcomingPage() {
       taskGroup('无日期', tasks.filter(task => !task.dueDate), 'muted')
     ]
   });
+}
+
+function recentPage() {
+  const tasks = recentTasks();
+  const days = Array.from({ length: 7 }, (_, index) => todayISO(-index));
+  return listPage({
+    eyebrow: 'RECENT · 最近7天',
+    title: '最近7天',
+    subtitle: '回看过去七天到今天的到期和完成任务。',
+    stats: [
+      { value: tasks.length, label: '最近任务' },
+      { value: tasks.filter(task => !task.completed).length, label: '未完成' },
+      { value: tasks.filter(task => task.completed).length, label: '已完成' },
+      { value: tasks.filter(task => task.urgent).length, label: '紧急' }
+    ],
+    placeholder: '添加一个今天要处理的任务',
+    quickContext: { dueDate: todayISO() },
+    groups: days.map(day => taskGroup(
+      day === todayISO() ? '今天' : shortDate(day),
+      tasks.filter(task => taskRecentDate(task) === day),
+      day === todayISO() ? 'success' : ''
+    ))
+  });
+}
+
+function matrixPage() {
+  const quadrants = matrixQuadrants();
+  return `
+    ${pageHeader({
+      eyebrow: 'MATRIX · 重要紧急',
+      title: '四象限',
+      subtitle: '根据任务优先级判断重要性，根据紧急标记判断紧急性。',
+      actions: '<button class="soft-button" type="button" data-action="open-task-modal">新建任务</button>'
+    })}
+    ${stats([
+      { value: quadrants[0].tasks.length, label: '重要且紧急' },
+      { value: quadrants[1].tasks.length, label: '重要不紧急' },
+      { value: quadrants[2].tasks.length, label: '紧急不重要' },
+      { value: quadrants[3].tasks.length, label: '不重要不紧急' }
+    ])}
+    <section class="matrix-grid">
+      ${quadrants.map(matrixQuadrant).join('')}
+    </section>
+  `;
+}
+
+function matrixQuadrant(quadrant) {
+  return `
+    <section class="group matrix-quadrant ${quadrant.tone}">
+      <div class="group-header">
+        <div>
+          <div class="group-title"><span class="dot ${quadrant.tone}"></span>${escapeHtml(quadrant.title)}</div>
+          <p class="matrix-subtitle">${escapeHtml(quadrant.subtitle)}</p>
+        </div>
+        <div class="group-meta">${quadrant.tasks.length} 项</div>
+      </div>
+      <div class="task-list">
+        ${sortTasks(quadrant.tasks).map(taskRow).join('') || emptyCompact('这里没有任务')}
+      </div>
+    </section>
+  `;
 }
 
 function calendarPage() {
@@ -598,7 +689,7 @@ function calendarMonthCell(day) {
   return `
     <article class="calendar-day ${day === todayISO() ? 'today' : ''}" data-drop-date="${day}">
       <div class="day-head"><strong>${Number(day.slice(8, 10))}</strong><span>${tasks.length}</span></div>
-      ${visible.map(task => `<button class="calendar-pill" type="button" draggable="true" data-task-id="${task.id}" data-action="select-task"><strong>${escapeHtml(task.title)}</strong></button>`).join('')}
+      ${visible.map(calendarPill).join('')}
       ${tasks.length > visible.length ? `<button class="tiny-action" type="button" data-action="filter-date" data-date="${day}">还有 ${tasks.length - visible.length} 项</button>` : ''}
     </article>
   `;
@@ -862,7 +953,7 @@ function settingsPanel() {
             <button class="quiet-button" type="button" data-action="test-notification">发送测试通知</button>
           </div>
         </div>
-        <div class="field"><label>默认提醒时间</label><select class="select" data-setting-select="defaultReminderTime">${['09:00','12:00','18:00',''].map(value => `<option value="${value}" ${state.data.settings.defaultReminderTime === value ? 'selected' : ''}>${value || '不自动设置'}</option>`).join('')}</select></div>
+        <div class="field"><label>默认提醒时间</label>${selectControl('data-setting-select="defaultReminderTime"', `${['09:00','12:00','18:00',''].map(value => `<option value="${value}" ${state.data.settings.defaultReminderTime === value ? 'selected' : ''}>${value || '不自动设置'}</option>`).join('')}`)}</div>
       </div>
     </section>
   `;
@@ -904,7 +995,15 @@ function settingsPanel() {
             { value: missing, label: '缺失附件' }
           ])}
           <div class="panel"><div class="panel-title">导出附件</div><p class="page-subtitle" style="margin:0;">附件 ZIP 使用内部存储 ID 匹配，导入时可恢复缺失文件。</p><a class="soft-button" href="/api/export/attachments">导出全部附件</a></div>
-          <div class="panel"><div class="panel-title">导入附件 ZIP</div><input class="input" type="file" accept=".zip,application/zip" data-attachment-zip /></div>
+          <div class="panel">
+            <div class="panel-title">导入附件 ZIP</div>
+            <label class="upload-dropzone compact">
+              <input class="file-input" type="file" accept=".zip,application/zip" data-attachment-zip />
+              <span class="file-icon">ZIP</span>
+              <span><strong>选择附件备份包</strong><span class="task-meta">导入后按内部存储 ID 恢复缺失文件</span></span>
+              <span class="tiny-action">选择文件</span>
+            </label>
+          </div>
         </div>
       </section>
     `;
@@ -944,7 +1043,6 @@ function importPreviewHtml() {
 
 function drawer(task) {
   const project = projectById(task.projectId);
-  const taskTags = new Set(task.tags || []);
   return `
     <aside class="drawer open">
       <div class="drawer-toolbar">
@@ -956,13 +1054,14 @@ function drawer(task) {
         <textarea class="drawer-title" data-drawer-field="title">${escapeHtml(task.title)}</textarea>
         <div class="property-grid">
           <label class="property"><span class="property-label">完成</span><span class="property-value"><input type="checkbox" ${task.completed ? 'checked' : ''} data-action="toggle-task" data-id="${task.id}" /> ${task.completed ? '已完成' : '未完成'}</span></label>
-          <label class="property"><span class="property-label">项目</span><span class="property-value"><select class="select" data-drawer-select="projectId"><option value="">收件箱</option>${state.data.projects.map(item => `<option value="${item.id}" ${item.id === task.projectId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></span></label>
-          <label class="property"><span class="property-label">章节</span><span class="property-value"><select class="select" data-drawer-select="sectionId"><option value="">无章节</option>${(project?.sections || []).map(section => `<option value="${section.id}" ${section.id === task.sectionId ? 'selected' : ''}>${escapeHtml(section.name)}</option>`).join('')}</select></span></label>
+          <label class="property"><span class="property-label">项目</span><span class="property-value">${selectControl('data-drawer-select="projectId"', `<option value="">收件箱</option>${state.data.projects.map(item => `<option value="${item.id}" ${item.id === task.projectId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}`)}</span></label>
+          <label class="property"><span class="property-label">章节</span><span class="property-value">${selectControl('data-drawer-select="sectionId"', `<option value="">无章节</option>${(project?.sections || []).map(section => `<option value="${section.id}" ${section.id === task.sectionId ? 'selected' : ''}>${escapeHtml(section.name)}</option>`).join('')}`)}</span></label>
           <label class="property"><span class="property-label">日期</span><span class="property-value"><input class="input" type="date" value="${task.dueDate || ''}" data-drawer-select="dueDate" /></span></label>
           <label class="property"><span class="property-label">提醒</span><span class="property-value"><input class="input" type="datetime-local" value="${localDatetime(task.reminderAt)}" data-drawer-select="reminderAt" /></span></label>
-          <label class="property"><span class="property-label">优先级</span><span class="property-value"><select class="select" data-drawer-select="priority">${['none','low','medium','high'].map(priority => `<option value="${priority}" ${priority === task.priority ? 'selected' : ''}>${priorityLabel(priority)}</option>`).join('')}</select></span></label>
-          <label class="property"><span class="property-label">标签</span><span class="property-value"><select class="select" multiple data-drawer-tags>${state.data.tags.map(tag => `<option value="${tag.id}" ${taskTags.has(tag.id) ? 'selected' : ''}>${escapeHtml(tag.name)}</option>`).join('')}</select></span></label>
-          <label class="property"><span class="property-label">重复</span><span class="property-value"><select class="select" data-drawer-select="recurrence"><option value="">不重复</option><option value='{"type":"daily","interval":1}' ${task.recurrence?.type === 'daily' ? 'selected' : ''}>每天</option><option value='{"type":"weekly","interval":1}' ${task.recurrence?.type === 'weekly' ? 'selected' : ''}>每周</option><option value='{"type":"monthly","interval":1}' ${task.recurrence?.type === 'monthly' ? 'selected' : ''}>每月</option><option value='{"type":"workdays","interval":1}' ${task.recurrence?.type === 'workdays' ? 'selected' : ''}>工作日</option></select></span></label>
+          <label class="property"><span class="property-label">优先级</span><span class="property-value">${selectControl('data-drawer-select="priority"', `${['none','low','medium','high'].map(priority => `<option value="${priority}" ${priority === task.priority ? 'selected' : ''}>${priorityLabel(priority)}</option>`).join('')}`)}</span></label>
+          <div class="property"><span class="property-label">紧急</span><span class="property-value"><button class="switch ${task.urgent ? 'on' : ''}" type="button" data-action="toggle-urgent" data-id="${task.id}" aria-label="${task.urgent ? '取消紧急' : '标记紧急'}"></button>${task.urgent ? '紧急' : '不紧急'}</span></div>
+          <div class="property tag-property"><span class="property-label">标签</span><span class="property-value">${tagPicker(task.tags || [], { mode: 'drawer', taskId: task.id })}</span></div>
+          <label class="property"><span class="property-label">重复</span><span class="property-value">${selectControl('data-drawer-select="recurrence"', `<option value="">不重复</option><option value='{"type":"daily","interval":1}' ${task.recurrence?.type === 'daily' ? 'selected' : ''}>每天</option><option value='{"type":"weekly","interval":1}' ${task.recurrence?.type === 'weekly' ? 'selected' : ''}>每周</option><option value='{"type":"monthly","interval":1}' ${task.recurrence?.type === 'monthly' ? 'selected' : ''}>每月</option><option value='{"type":"workdays","interval":1}' ${task.recurrence?.type === 'workdays' ? 'selected' : ''}>工作日</option>`)}</span></label>
         </div>
         <section class="panel">
           <div class="panel-title">Markdown 描述 <button class="tiny-action" type="button" data-action="toggle-preview">预览已同步</button></div>
@@ -974,14 +1073,19 @@ function drawer(task) {
           ${(task.subtasks || []).map(subtask => `
             <div class="subtask">
               <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-action="toggle-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
-              <input type="text" value="${escapeHtml(subtask.title)}" data-subtask-title data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
+              <textarea class="subtask-title" rows="1" data-autosize data-subtask-title data-task-id="${task.id}" data-subtask-id="${subtask.id}">${escapeHtml(subtask.title)}</textarea>
               <button class="tiny-action" type="button" data-action="delete-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}">删除</button>
             </div>
           `).join('') || '<p class="page-subtitle" style="margin:0;">还没有子任务。</p>'}
         </section>
         <section class="panel">
           <div class="panel-title">附件 <span class="chip">${(task.attachments || []).length} 个</span></div>
-          <input class="input" type="file" multiple data-file-upload data-task-id="${task.id}" />
+          <label class="upload-dropzone">
+            <input class="file-input" type="file" multiple data-file-upload data-task-id="${task.id}" />
+            <span class="file-icon">UP</span>
+            <span><strong>上传附件</strong><span class="task-meta">支持多文件，单个文件最大 100MB</span></span>
+            <span class="tiny-action">选择文件</span>
+          </label>
           ${(task.attachments || []).map(file => `
             <div class="file-row">
               <span class="file-icon">${escapeHtml(fileExtension(file.originalName))}</span>
@@ -1003,9 +1107,11 @@ function taskModal() {
   return modal('taskModalOpen', '新建任务', `
     <form class="dialog-body" data-submit="create-task">
       <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" /></div>
-      <div class="field"><label>项目</label><select class="select" name="projectId"><option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${state.data.projects.map(project => `<option value="${project.id}" ${project.id === defaults.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${state.data.projects.map(project => `<option value="${project.id}" ${project.id === defaults.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('')}`)}</div>
       <div class="field"><label>日期</label><input class="input" name="dueDate" type="date" value="${escapeHtml(defaults.dueDate || '')}" /></div>
-      <div class="field"><label>优先级</label><select class="select" name="priority"><option value="none">普通</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></div>
+      <div class="field"><label>优先级</label>${selectControl('name="priority"', '<option value="none">普通</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option>')}</div>
+      <div class="field"><label>标签</label>${tagPicker(defaults.tagId ? [defaults.tagId] : [], { mode: 'form' })}</div>
+      <label class="check-field"><input type="checkbox" name="urgent" value="true" /><span>标记为紧急</span></label>
       <input type="hidden" name="sectionId" value="${escapeHtml(defaults.sectionId || '')}" />
       <input type="hidden" name="tagId" value="${escapeHtml(defaults.tagId || '')}" />
       <button class="primary-add" type="submit">创建任务</button>
@@ -1027,7 +1133,7 @@ function tagModal() {
   return modal('tagModalOpen', '新建标签', `
     <form class="dialog-body" data-submit="create-tag">
       <div class="field"><label>标签名称</label><input class="input" name="name" required placeholder="例如：家务" /></div>
-      <div class="field"><label>颜色</label><select class="select" name="color"><option value="blue">蓝</option><option value="green">绿</option><option value="amber">黄</option><option value="red">红</option><option value="violet">紫</option></select></div>
+      <div class="field"><label>颜色</label>${selectControl('name="color"', '<option value="blue">蓝</option><option value="green">绿</option><option value="amber">黄</option><option value="red">红</option><option value="violet">紫</option>')}</div>
       <button class="primary-add" type="submit">创建标签</button>
     </form>
   `);
@@ -1040,7 +1146,7 @@ function filterModal() {
   return modal('filterModalOpen', editing ? '编辑智能过滤器' : '智能过滤器', `
     <form class="dialog-body" data-submit="create-filter">
       <div class="field"><label>名称</label><input class="input" name="name" required placeholder="例如：本周高优先级" value="${escapeHtml(editing?.name || '')}" /></div>
-      <div class="field"><label>字段</label><select class="select" name="field">${['priority','projectId','tag','due','hasAttachment','hasReminder'].map(field => `<option value="${field}" ${field === condition.field ? 'selected' : ''}>${conditionFieldLabel(field)}</option>`).join('')}</select></div>
+      <div class="field"><label>字段</label>${selectControl('name="field"', `${['priority','projectId','tag','due','hasAttachment','hasReminder'].map(field => `<option value="${field}" ${field === condition.field ? 'selected' : ''}>${conditionFieldLabel(field)}</option>`).join('')}`)}</div>
       <div class="field"><label>值</label><input class="input" name="value" placeholder="high / 项目ID / 标签ID / today / upcoming / true" value="${escapeHtml(conditionValue)}" /></div>
       <button class="primary-add" type="submit">${editing ? '保存修改' : '保存过滤器'}</button>
     </form>
@@ -1051,7 +1157,7 @@ function modal(flag, title, body) {
   return `
     <div class="modal-layer ${state[flag] ? 'open' : ''}" aria-hidden="${state[flag] ? 'false' : 'true'}">
       <div class="dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
-        <div class="dialog-head"><h2 style="font-size:24px;">${escapeHtml(title)}</h2><button class="icon-btn" type="button" data-action="close-modals">×</button></div>
+        <div class="dialog-head"><h2 class="dialog-title">${escapeHtml(title)}</h2><button class="icon-btn" type="button" data-action="close-modals">×</button></div>
         ${body}
       </div>
     </div>
@@ -1063,7 +1169,7 @@ function commandModal() {
   return `
     <div class="modal-layer ${state.commandOpen ? 'open' : ''}" aria-hidden="${state.commandOpen ? 'false' : 'true'}">
       <div class="dialog" role="dialog" aria-modal="true" aria-label="命令面板">
-        <div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn" type="button" data-action="close-command">×</button></div>
+        <div class="dialog-head"><h2 class="dialog-title">命令面板</h2><button class="icon-btn" type="button" data-action="close-command">×</button></div>
         <div class="dialog-body">
           <input class="input" data-command-input placeholder="搜索任务、项目或动作" autofocus />
           <div class="cmd-list" data-command-results>
@@ -1114,11 +1220,17 @@ async function handleAction(action, payload, target) {
     }
     if (action === 'postpone-task') return updateTask(payload.id, { dueDate: todayISO(1) });
     if (action === 'cycle-priority') return cyclePriority(payload.id);
+    if (action === 'toggle-urgent') {
+      const task = taskById(payload.id);
+      if (task) await updateTask(task.id, { urgent: !task.urgent });
+      return;
+    }
     if (action === 'delete-task') return deleteTask(payload.id);
     if (action === 'delete-attachment') return deleteAttachment(payload.id);
     if (action === 'add-subtask') return addSubtask(payload.id);
     if (action === 'toggle-subtask') return toggleSubtask(payload.taskId, payload.subtaskId);
     if (action === 'delete-subtask') return deleteSubtask(payload.taskId, payload.subtaskId);
+    if (action === 'toggle-task-tag') return toggleTaskTag(payload.taskId, payload.tagId);
     if (action === 'calendar-mode') { state.calendarMode = payload.mode; return render(); }
     if (action === 'calendar-today') { showToast('已回到今天'); return; }
     if (action === 'filter-date') { showToast(`已聚焦 ${payload.date}`); return; }
@@ -1163,13 +1275,15 @@ async function handleSubmit(action, form) {
     }
     if (action === 'quick-task' || action === 'create-task') {
       const tagId = formData.get('tagId');
+      const selectedTags = formData.getAll('tags');
       const payload = {
         title: formData.get('title'),
         projectId: formData.get('projectId') || null,
         sectionId: formData.get('sectionId') || null,
         dueDate: formData.get('dueDate') || null,
         priority: formData.get('priority') || 'none',
-        tags: tagId ? [tagId] : []
+        urgent: formData.get('urgent') === 'true',
+        tags: [...new Set([...selectedTags, ...(tagId ? [tagId] : [])])]
       };
       const response = await api('/api/tasks', { method: 'POST', body: payload });
       state.selectedTaskId = response.task.id;
@@ -1292,10 +1406,19 @@ async function cyclePriority(id) {
   await updateTask(id, { priority: next });
 }
 
+async function toggleTaskTag(taskId, tagId) {
+  const task = taskById(taskId);
+  if (!task || !tagId) return;
+  const current = new Set(task.tags || []);
+  if (current.has(tagId)) current.delete(tagId);
+  else current.add(tagId);
+  await updateTask(taskId, { tags: [...current] });
+}
+
 async function addSubtask(id) {
   const task = taskById(id);
   if (!task) return;
-  const title = prompt('子任务标题');
+  const title = prompt('子任务标题，可以粘贴多行内容');
   if (!title) return;
   const subtasks = [...(task.subtasks || []), { title, completed: false, order: (task.subtasks || []).length + 1 }];
   await updateTask(id, { subtasks });
@@ -1509,6 +1632,15 @@ function syncToast() {
   }
 }
 
+function autosizeTextareas() {
+  document.querySelectorAll('[data-autosize]').forEach(autosizeTextarea);
+}
+
+function autosizeTextarea(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 function taskModalDefaults() {
   return {
     dueDate: todayISO(),
@@ -1544,6 +1676,63 @@ function sortTasks(tasks) {
     if ((a.dueDate || '') !== (b.dueDate || '')) return String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'));
     return (a.order || 0) - (b.order || 0);
   });
+}
+
+function isWithinRecentWindow(value) {
+  return Boolean(value && value >= todayISO(-6) && value <= todayISO());
+}
+
+function taskRecentDate(task) {
+  if (isWithinRecentWindow(task.dueDate)) return task.dueDate;
+  const completedDate = task.completedAt?.slice(0, 10);
+  if (isWithinRecentWindow(completedDate)) return completedDate;
+  return null;
+}
+
+function recentTasks() {
+  return state.data.tasks.filter(task => taskRecentDate(task));
+}
+
+function isUrgentTask(task) {
+  return Boolean(task.urgent);
+}
+
+function isImportantTask(task) {
+  return ['high', 'medium'].includes(task.priority);
+}
+
+function matrixQuadrants() {
+  const tasks = openTasks();
+  return [
+    {
+      key: 'important-urgent',
+      title: '重要且紧急',
+      subtitle: '现在处理',
+      tone: 'danger',
+      tasks: tasks.filter(task => isImportantTask(task) && isUrgentTask(task))
+    },
+    {
+      key: 'important-not-urgent',
+      title: '重要不紧急',
+      subtitle: '安排时间',
+      tone: 'success',
+      tasks: tasks.filter(task => isImportantTask(task) && !isUrgentTask(task))
+    },
+    {
+      key: 'not-important-urgent',
+      title: '紧急不重要',
+      subtitle: '快速处理或委托',
+      tone: 'warn',
+      tasks: tasks.filter(task => !isImportantTask(task) && isUrgentTask(task))
+    },
+    {
+      key: 'not-important-not-urgent',
+      title: '不重要不紧急',
+      subtitle: '稍后或删除',
+      tone: 'muted',
+      tasks: tasks.filter(task => !isImportantTask(task) && !isUrgentTask(task))
+    }
+  ];
 }
 
 function taskById(id) {
@@ -1620,7 +1809,9 @@ function sidebarCounts() {
     today: openTasks().filter(task => task.dueDate === todayISO() || (task.dueDate && task.dueDate < todayISO())).length,
     inbox: openTasks().filter(task => !task.projectId).length,
     upcoming: openTasks().filter(task => task.dueDate && task.dueDate > todayISO()).length,
+    recent: recentTasks().length,
     calendar: openTasks().filter(task => task.dueDate).length,
+    matrix: openTasks().length,
     projects: activeProjects().length,
     tags: state.data.tags.length,
     filters: state.data.filters.length,
@@ -1668,6 +1859,8 @@ function routeIcon() {
   if (state.route.name === 'project') return '●';
   if (state.route.name === 'tag') return '#';
   if (state.route.name === 'filter') return '⚑';
+  if (state.route.name === 'matrix') return '⊞';
+  if (state.route.name === 'recent') return '↺';
   return navItems.find(item => item.id === state.route.name)?.icon || '✓';
 }
 

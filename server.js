@@ -10,7 +10,7 @@ import { createZip, parseZip } from './src/zip.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const prototypeDir = __dirname;
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 38887);
 const maxJsonBytes = 12 * 1024 * 1024;
 const maxUploadBytes = 110 * 1024 * 1024;
 
@@ -568,7 +568,7 @@ const server = http.createServer(async (req, res) => {
 
 server.on('error', error => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use. Start with another port, for example: PORT=4174 npm run dev`);
+    console.error(`Port ${port} is already in use. Start with another port, for example: PORT=38888 npm run dev`);
   } else if (error.code === 'EACCES' || error.code === 'EPERM') {
     console.error(`Cannot listen on port ${port}. Check local permissions or use another port.`);
   } else {
