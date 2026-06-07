@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 收件箱</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar">
+    <div class="brand-row" style="padding:0;"><div class="brand-mark">▣</div><div class="brand-copy"><strong>收件箱</strong><span>4 项未整理</span></div></div>
+    <button class="icon-btn" type="button" data-open-command>⌘</button>
+  </div>
+
+  <main class="app-shell" data-od-id="inbox-page">
+    <aside class="sidebar" data-od-id="desktop-sidebar">
+      <div class="brand-row"><div class="brand-mark">✓</div><div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div></div>
+      <button class="primary-add" type="button" data-open-new>+ 新建任务</button>
+      <nav class="nav-block">
+        <div class="nav-heading">主要视图</div>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">6</span></a>
+        <a class="nav-item active" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+      </nav>
+      <nav class="nav-block">
+        <div class="nav-heading">项目</div>
+        <a class="nav-item" href="project-personal-system.html"><span class="project-dot"></span><span>个人系统</span><span class="nav-count">9</span></a>
+        <a class="nav-item" href="projects.html"><span class="project-dot green"></span><span>Open Design</span><span class="nav-count">5</span></a>
+        <a class="nav-item" href="projects.html"><span class="project-dot warn"></span><span>服务器维护</span><span class="nav-count">3</span></a>
+      </nav>
+      <div class="sidebar-bottom"><a class="nav-item" href="settings.html"><span>⚙</span><span>设置</span><span></span></a></div>
+    </aside>
+
+    <section class="main-pane" data-od-id="inbox-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">INBOX · 默认捕获容器</p>
+          <h1 class="page-title">收件箱</h1>
+          <p class="page-subtitle">没有指定项目的新任务会先进入这里。这个页面重点支持批量整理，而不是长期囤积任务。</p>
+        </div>
+        <div class="header-actions">
+          <button class="quiet-button" type="button" data-open-command>搜索 <span class="shortcut">⌘K</span></button>
+          <button class="soft-button" type="button" data-toggle-bulk>整理</button>
+          <button class="soft-button" type="button" data-row-action data-message="已按创建时间排序">排序</button>
+          <button class="soft-button" type="button" data-open-new>新建任务</button>
+        </div>
+      </header>
+
+      <div class="stat-strip">
+        <article class="stat-card"><strong>4</strong><span>未整理任务</span></article>
+        <article class="stat-card"><strong>2</strong><span>建议今天处理</span></article>
+        <article class="stat-card"><strong>3</strong><span>可批量移动到项目</span></article>
+        <article class="stat-card"><strong>1</strong><span>含附件待归类</span></article>
+      </div>
+
+      <form class="quick-add" data-quick-form data-target="[data-append-list]" data-project="收件箱" data-date="无日期">
+        <input name="quickTask" autocomplete="off" placeholder="快速记录一个想法，默认无项目、无日期" />
+        <button class="chip" type="button" data-row-action data-message="保持无日期">无日期</button>
+        <button class="chip" type="button" data-row-action data-message="默认进入收件箱">收件箱</button>
+        <button class="soft-button" type="submit">添加</button>
+      </form>
+
+      <div class="bulk-bar" data-bulk-bar>
+        <strong>已进入批量整理模式</strong>
+        <div class="header-actions">
+          <button class="soft-button" type="button" data-row-action data-message="已打开项目选择弹层">移动到项目</button>
+          <button class="soft-button" type="button" data-row-action data-message="已打开标签选择弹层">添加标签</button>
+          <button class="soft-button" type="button" data-row-action data-message="已打开日期选择弹层">设置日期</button>
+        </div>
+      </div>
+
+      <section class="group" data-od-id="inbox-task-list">
+        <div class="group-header">
+          <div class="group-title"><span class="dot"></span>未整理</div>
+          <div class="group-meta">4 项 · 创建时间倒序</div>
+        </div>
+        <div class="task-list" data-append-list>
+          <button class="task-row selected" type="button" data-task-row data-task-title="把 PWA 安装提示写进设置页" data-project="收件箱" data-date="无日期" data-priority="普通" data-tags="PWA">
+            <span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span>
+            <span><span class="task-title">把 PWA 安装提示写进设置页</span><span class="task-meta"><span class="mini-tag">无项目</span><span class="mini-tag">刚刚</span><span class="mini-tag">PWA</span></span></span>
+            <span class="task-actions"><span class="priority"></span><span class="tiny-action" data-row-action data-message="已打开项目选择">移动</span></span>
+          </button>
+          <button class="task-row" type="button" data-task-row data-task-title="记录附件 ZIP 匹配不到元数据的错误状态" data-project="收件箱" data-date="今天" data-priority="高优先级" data-tags="附件">
+            <span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span>
+            <span><span class="task-title">记录附件 ZIP 匹配不到元数据的错误状态</span><span class="task-meta"><span class="mini-tag">无项目</span><span class="mini-tag">今天</span><span class="mini-tag">附件</span></span></span>
+            <span class="task-actions"><span class="priority high"></span><span class="tiny-action" data-row-action data-message="已打开标签选择">标签</span></span>
+          </button>
+          <button class="task-row" type="button" data-task-row data-task-title="给移动端更多页补设置入口顺序" data-project="收件箱" data-date="明天" data-priority="低优先级" data-tags="移动端">
+            <span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span>
+            <span><span class="task-title">给移动端更多页补设置入口顺序</span><span class="task-meta"><span class="mini-tag">无项目</span><span class="mini-tag">明天</span><span class="mini-tag">移动端</span></span></span>
+            <span class="task-actions"><span class="priority low"></span><span class="tiny-action" data-row-action data-message="已设置为今天">今天</span></span>
+          </button>
+          <button class="task-row" type="button" data-task-row data-task-title="把智能过滤器条件编辑器做成行内组合控件" data-project="收件箱" data-date="无日期" data-priority="中优先级" data-tags="过滤器">
+            <span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span>
+            <span><span class="task-title">把智能过滤器条件编辑器做成行内组合控件</span><span class="task-meta"><span class="mini-tag">无项目</span><span class="mini-tag">无日期</span><span class="mini-tag">过滤器</span></span></span>
+            <span class="task-actions"><span class="priority mid"></span><span class="tiny-action" data-row-action data-message="已删除任务">删除</span></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="empty-state" style="margin-top:18px;" data-od-id="inbox-empty-state">
+        <h2>收件箱已清空</h2>
+        <p>当未整理任务全部移动到项目或设置日期后，这里会回到空状态。新的想法和待办仍然可以先放在这里。</p>
+        <button class="soft-button" type="button" data-open-new>添加任务</button>
+      </section>
+    </section>
+
+    <aside class="drawer open" data-drawer data-od-id="task-drawer">
+      <div class="drawer-toolbar">
+        <button class="icon-btn plain" type="button" data-close-drawer>×</button>
+        <span class="save-state" data-save-state>已保存 · 刚刚</span>
+        <button class="icon-btn plain" type="button" data-row-action data-message="已打开更多操作">⋯</button>
+      </div>
+      <div class="drawer-content">
+        <textarea class="drawer-title" data-drawer-title>把 PWA 安装提示写进设置页</textarea>
+        <div class="property-grid">
+          <button class="property" type="button"><span class="property-label">项目</span><span class="property-value"><span data-drawer-project>收件箱</span></span></button>
+          <button class="property" type="button"><span class="property-label">日期</span><span class="property-value"><span class="chip" data-drawer-date>无日期</span></span></button>
+          <button class="property" type="button"><span class="property-label">优先级</span><span class="property-value"><span class="priority"></span><span data-drawer-priority>普通</span></span></button>
+          <button class="property" type="button"><span class="property-label">标签</span><span class="property-value"><span data-drawer-tags>PWA</span></span></button>
+        </div>
+        <section class="panel"><div class="panel-title">整理建议 <span class="save-state">可批量操作</span></div><p class="page-subtitle" style="margin:0;">这条任务没有项目和日期。可以移动到「个人系统」，并设置为本周内处理。</p></section>
+        <section class="panel"><div class="panel-title">Markdown 描述</div><textarea class="note-area" data-note-area>设置页需要说明：PWA 安装后可获得更稳定的离线访问和通知体验，但通知权限仍由浏览器控制。</textarea></section>
+      </div>
+    </aside>
+  </main>
+
+  <button class="fab" type="button" data-open-new>+</button>
+  <nav class="mobile-bottom">
+    <a href="personal-todo-today-workspace.html">今日</a><a class="active" href="inbox.html">收件箱</a><a href="calendar.html">日历</a><a href="projects.html">项目</a><a href="settings.html">更多</a>
+  </nav>
+
+  <div class="modal-layer" data-new-modal aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="新建任务">
+      <div class="dialog-head"><h2 style="font-size:24px;">新建任务</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div>
+      <form class="dialog-body" data-create-form>
+        <div class="field"><label>任务标题</label><input class="input" required placeholder="例如：整理智能过滤器空状态" /></div>
+        <div class="field"><label>默认位置</label><select class="select"><option>收件箱</option><option>个人系统</option><option>Open Design</option></select></div>
+        <button class="primary-add" type="submit">创建任务</button>
+      </form>
+    </div>
+  </div>
+  <div class="modal-layer" data-command-modal aria-hidden="true">
+    <div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><div class="dialog-body"><input class="input" placeholder="搜索任务、项目或动作" /><div class="cmd-list"><button class="cmd-item active" type="button" data-open-new><span class="file-icon">A</span><span><strong>新建任务</strong><span class="task-meta">默认进入收件箱</span></span><span class="shortcut">Enter</span></button><a class="cmd-item" href="upcoming.html"><span class="file-icon">U</span><span><strong>跳转即将到来</strong><span class="task-meta">按日期规划</span></span><span class="shortcut">G U</span></a></div></div></div>
+  </div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>

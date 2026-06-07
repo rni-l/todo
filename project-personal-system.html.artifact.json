@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "project-personal-system.html",
+  "entry": "project-personal-system.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-06-07T08:08:43.696Z",
+  "updatedAt": "2026-06-07T08:08:43.696Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

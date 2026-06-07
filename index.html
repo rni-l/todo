@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 页面入口</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar">
+    <div class="brand-row" style="padding:0;">
+      <div class="brand-mark" aria-hidden="true">✓</div>
+      <div class="brand-copy"><strong>页面入口</strong><span>个人 TODO 原型</span></div>
+    </div>
+    <a class="icon-btn" href="personal-todo-today-workspace.html" aria-label="打开今日页">今</a>
+  </div>
+
+  <main class="app-shell no-drawer" data-od-id="prototype-launcher">
+    <aside class="sidebar" data-od-id="desktop-sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">✓</div>
+        <div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div>
+      </div>
+      <a class="primary-add" href="personal-todo-today-workspace.html">打开今日页</a>
+      <nav class="nav-block" aria-label="页面导航">
+        <div class="nav-heading">核心页面</div>
+        <a class="nav-item active" href="index.html"><span>⌂</span><span>页面入口</span><span></span></a>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">已做</span></a>
+        <a class="nav-item" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+        <a class="nav-item" href="projects.html"><span>●</span><span>项目</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="settings.html"><span>⚙</span><span>设置</span><span></span></a>
+      </nav>
+    </aside>
+
+    <section class="main-pane" data-od-id="launcher-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">PROTOTYPE MAP · 多页面入口</p>
+          <h1 class="page-title">个人 TODO 页面原型</h1>
+          <p class="page-subtitle">这是多页面原型入口。每个用户可见页面独立成 HTML，便于分别评审桌面和移动端响应式状态。</p>
+        </div>
+        <div class="header-actions">
+          <a class="quiet-button" href="docs/plans/2026-06-07-todo-app-page-prototype.md">需求文档</a>
+          <button class="soft-button" type="button" data-open-command>命令面板</button>
+        </div>
+      </header>
+
+      <div class="stat-strip">
+        <article class="stat-card"><strong>7</strong><span>已生成核心页面</span></article>
+        <article class="stat-card"><strong>3</strong><span>主要工作流覆盖</span></article>
+        <article class="stat-card"><strong>2</strong><span>桌面 / 移动布局状态</span></article>
+        <article class="stat-card"><strong>1</strong><span>共享视觉系统</span></article>
+      </div>
+
+      <section class="overview-grid" data-od-id="screen-cards">
+        <a class="screen-card" href="personal-todo-today-workspace.html">
+          <span class="chip strong">核心工作台</span>
+          <h2>今日</h2>
+          <p>已完成页面：三栏工作台、快速添加、任务详情抽屉、命令面板和新建任务弹层。</p>
+          <footer><span>打开页面</span><span>today</span></footer>
+        </a>
+        <a class="screen-card" href="inbox.html">
+          <span class="chip">整理流</span>
+          <h2>收件箱</h2>
+          <p>捕获未整理任务，支持批量整理、移动项目、添加标签和设置日期。</p>
+          <footer><span>打开页面</span><span>inbox</span></footer>
+        </a>
+        <a class="screen-card" href="upcoming.html">
+          <span class="chip">计划流</span>
+          <h2>即将到来</h2>
+          <p>按明天、本周、下周、以后分组，突出改期与轻量计划。</p>
+          <footer><span>打开页面</span><span>upcoming</span></footer>
+        </a>
+        <a class="screen-card" href="calendar.html">
+          <span class="chip">日期流</span>
+          <h2>日历</h2>
+          <p>包含周视图和月视图切换、日期格任务、重复标记和改期反馈。</p>
+          <footer><span>打开页面</span><span>calendar</span></footer>
+        </a>
+        <a class="screen-card" href="projects.html">
+          <span class="chip">组织流</span>
+          <h2>项目总览</h2>
+          <p>项目列表、未完成数量、今日到期、归档管理和新建项目入口。</p>
+          <footer><span>打开页面</span><span>projects</span></footer>
+        </a>
+        <a class="screen-card" href="project-personal-system.html">
+          <span class="chip">项目详情</span>
+          <h2>个人系统</h2>
+          <p>章节任务列表、项目上下文快速添加、章节操作和项目设置入口。</p>
+          <footer><span>打开页面</span><span>project detail</span></footer>
+        </a>
+        <a class="screen-card" href="settings.html">
+          <span class="chip">配置流</span>
+          <h2>设置首页</h2>
+          <p>账号、外观、通知、数据导入导出、附件导入导出和退出登录。</p>
+          <footer><span>打开页面</span><span>settings</span></footer>
+        </a>
+      </section>
+    </section>
+  </main>
+
+  <nav class="mobile-bottom" aria-label="移动端导航">
+    <a class="active" href="index.html">入口</a>
+    <a href="personal-todo-today-workspace.html">今日</a>
+    <a href="inbox.html">收件箱</a>
+    <a href="calendar.html">日历</a>
+    <a href="projects.html">项目</a>
+  </nav>
+
+  <div class="modal-layer" data-command-modal aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="命令面板">
+      <div class="dialog-head">
+        <h2 style="font-size:24px;">命令面板</h2>
+        <button class="icon-btn plain" type="button" data-close-modal>×</button>
+      </div>
+      <div class="dialog-body">
+        <input class="input" placeholder="搜索页面或动作" />
+        <div class="cmd-list">
+          <a class="cmd-item active" href="personal-todo-today-workspace.html"><span class="file-icon">今</span><span><strong>跳转今日</strong><span class="task-meta">默认登录后入口</span></span><span class="shortcut">G T</span></a>
+          <a class="cmd-item" href="calendar.html"><span class="file-icon">日</span><span><strong>打开日历</strong><span class="task-meta">周 / 月视图</span></span><span class="shortcut">G C</span></a>
+          <a class="cmd-item" href="settings.html"><span class="file-icon">设</span><span><strong>打开设置</strong><span class="task-meta">数据与通知配置</span></span><span class="shortcut">G S</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>

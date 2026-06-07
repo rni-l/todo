@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 项目</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar"><div class="brand-row" style="padding:0;"><div class="brand-mark">●</div><div class="brand-copy"><strong>项目</strong><span>4 个活跃项目</span></div></div><button class="icon-btn" type="button" data-open-command>⌘</button></div>
+  <main class="app-shell no-drawer" data-od-id="projects-page">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark">✓</div><div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div></div>
+      <button class="primary-add" type="button" data-open-new>+ 新建项目</button>
+      <nav class="nav-block">
+        <div class="nav-heading">主要视图</div>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">6</span></a>
+        <a class="nav-item" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+      </nav>
+      <nav class="nav-block">
+        <div class="nav-heading">组织</div>
+        <a class="nav-item active" href="projects.html"><span>●</span><span>项目</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="settings.html"><span>#</span><span>标签</span><span class="nav-count">8</span></a>
+      </nav>
+      <div class="sidebar-bottom"><a class="nav-item" href="settings.html"><span>⚙</span><span>设置</span><span></span></a></div>
+    </aside>
+
+    <section class="main-pane" data-od-id="projects-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">PROJECTS · 任务组织</p>
+          <h1 class="page-title">项目</h1>
+          <p class="page-subtitle">项目是任务的主要容器。每个任务只能属于一个项目，可在项目内继续分章节整理。</p>
+        </div>
+        <div class="header-actions">
+          <button class="soft-button" type="button" data-open-new>新建项目</button>
+          <button class="soft-button" type="button" data-row-action data-message="已进入项目排序">排序</button>
+          <button class="quiet-button" type="button" data-row-action data-message="已显示归档项目">显示已归档</button>
+        </div>
+      </header>
+
+      <div class="project-grid" data-od-id="project-list">
+        <article class="project-card">
+          <header><span class="chip strong"><span class="project-dot"></span>个人系统</span><span class="group-meta">今天更新</span></header>
+          <h2 style="font-size:32px;">个人系统</h2>
+          <p>数据导入导出、附件、通知、账号安全等第一版核心能力。</p>
+          <div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin:0;"><article class="stat-card"><strong>9</strong><span>未完成</span></article><article class="stat-card"><strong>3</strong><span>今天到期</span></article><article class="stat-card"><strong>4</strong><span>章节</span></article></div>
+          <div class="progress-track" style="--value:64%;"><span></span></div>
+          <footer class="header-actions" style="justify-content:space-between;"><a class="tiny-action" href="project-personal-system.html">打开项目</a><button class="tiny-action" type="button" data-row-action data-message="已打开项目设置">设置</button></footer>
+        </article>
+        <article class="project-card">
+          <header><span class="chip"><span class="project-dot green"></span>Open Design</span><span class="group-meta">昨天更新</span></header>
+          <h2 style="font-size:32px;">Open Design</h2>
+          <p>原型交付、页面状态、移动端细节和评审反馈。</p>
+          <div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin:0;"><article class="stat-card"><strong>5</strong><span>未完成</span></article><article class="stat-card"><strong>1</strong><span>今天到期</span></article><article class="stat-card"><strong>2</strong><span>章节</span></article></div>
+          <div class="progress-track" style="--value:48%;"><span></span></div>
+          <footer class="header-actions" style="justify-content:space-between;"><button class="tiny-action" type="button" data-row-action data-message="已打开项目详情">打开</button><button class="tiny-action" type="button" data-row-action data-message="项目已归档">归档</button></footer>
+        </article>
+        <article class="project-card">
+          <header><span class="chip"><span class="project-dot warn"></span>服务器维护</span><span class="group-meta">3 天前</span></header>
+          <h2 style="font-size:32px;">服务器维护</h2>
+          <p>自托管部署、附件目录备份、通知和离线访问可靠性。</p>
+          <div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin:0;"><article class="stat-card"><strong>3</strong><span>未完成</span></article><article class="stat-card"><strong>0</strong><span>今天到期</span></article><article class="stat-card"><strong>1</strong><span>章节</span></article></div>
+          <div class="progress-track" style="--value:72%;"><span></span></div>
+          <footer class="header-actions" style="justify-content:space-between;"><button class="tiny-action" type="button" data-row-action data-message="已打开重命名">重命名</button><button class="tiny-action" type="button" data-row-action data-message="删除前需要选择任务处理方式">删除</button></footer>
+        </article>
+        <article class="project-card">
+          <header><span class="chip"><span class="project-dot violet"></span>阅读与记录</span><span class="group-meta">上周</span></header>
+          <h2 style="font-size:32px;">阅读与记录</h2>
+          <p>个人资料整理、文档复盘和周期性回顾。</p>
+          <div class="stat-strip" style="grid-template-columns:repeat(3,1fr);margin:0;"><article class="stat-card"><strong>2</strong><span>未完成</span></article><article class="stat-card"><strong>0</strong><span>今天到期</span></article><article class="stat-card"><strong>0</strong><span>章节</span></article></div>
+          <div class="progress-track" style="--value:35%;"><span></span></div>
+          <footer class="header-actions" style="justify-content:space-between;"><button class="tiny-action" type="button" data-row-action data-message="已打开项目详情">打开</button><button class="tiny-action" type="button" data-row-action data-message="项目已归档">归档</button></footer>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <button class="fab" type="button" data-open-new>+</button>
+  <nav class="mobile-bottom"><a href="personal-todo-today-workspace.html">今日</a><a href="inbox.html">收件箱</a><a href="calendar.html">日历</a><a class="active" href="projects.html">项目</a><a href="settings.html">更多</a></nav>
+  <div class="modal-layer" data-new-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">新建项目</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><form class="dialog-body" data-create-form><div class="field"><label>项目名称</label><input class="input" required placeholder="例如：家庭事务" /></div><div class="field"><label>说明</label><textarea class="textarea" placeholder="这个项目主要用来整理什么？"></textarea></div><button class="primary-add" type="submit">创建项目</button></form></div></div>
+  <div class="modal-layer" data-command-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><div class="dialog-body"><input class="input" placeholder="搜索项目或动作" /><div class="cmd-list"><button class="cmd-item active" type="button" data-open-new><span class="file-icon">P</span><span><strong>新建项目</strong><span class="task-meta">创建任务容器</span></span><span class="shortcut">N</span></button><a class="cmd-item" href="project-personal-system.html"><span class="file-icon">个</span><span><strong>打开个人系统</strong><span class="task-meta">9 项未完成</span></span><span class="shortcut">Enter</span></a></div></div></div></div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>

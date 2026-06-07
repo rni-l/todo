@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 项目详情</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar"><div class="brand-row" style="padding:0;"><div class="brand-mark">●</div><div class="brand-copy"><strong>个人系统</strong><span>9 项未完成</span></div></div><button class="icon-btn" type="button" data-open-command>⌘</button></div>
+  <main class="app-shell" data-od-id="project-detail-page">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark">✓</div><div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div></div>
+      <button class="primary-add" type="button" data-open-new>+ 新建任务</button>
+      <nav class="nav-block">
+        <div class="nav-heading">主要视图</div>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">6</span></a>
+        <a class="nav-item" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+      </nav>
+      <nav class="nav-block"><div class="nav-heading">项目</div><a class="nav-item active" href="project-personal-system.html"><span class="project-dot"></span><span>个人系统</span><span class="nav-count">9</span></a><a class="nav-item" href="projects.html"><span class="project-dot green"></span><span>Open Design</span><span class="nav-count">5</span></a></nav>
+      <div class="sidebar-bottom"><a class="nav-item" href="projects.html"><span>←</span><span>项目总览</span><span></span></a></div>
+    </aside>
+
+    <section class="main-pane" data-od-id="project-detail-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">PROJECT · 个人系统</p>
+          <h1 class="page-title">个人系统</h1>
+          <p class="page-subtitle">第一版个人 TODO 的核心能力集合：数据导入导出、附件恢复、通知权限、账号安全和外观设置。</p>
+        </div>
+        <div class="header-actions">
+          <button class="soft-button" type="button" data-open-new>新建任务</button>
+          <button class="soft-button" type="button" data-row-action data-message="已创建新章节">新建章节</button>
+          <button class="soft-button" type="button" data-row-action data-message="已切换为按章节分组">分组</button>
+          <button class="quiet-button" type="button" data-row-action data-message="已打开项目设置">项目设置</button>
+        </div>
+      </header>
+
+      <form class="quick-add" data-quick-form data-target="[data-append-list]" data-project="个人系统" data-date="今天">
+        <input name="quickTask" autocomplete="off" placeholder="在「数据导入导出」章节快速添加任务" />
+        <button class="chip strong" type="button">个人系统</button>
+        <button class="chip" type="button">数据导入导出</button>
+        <button class="soft-button" type="submit">添加</button>
+      </form>
+
+      <div class="task-board" data-od-id="project-sections">
+        <section class="group">
+          <div class="group-header"><div class="group-title"><span class="dot"></span>数据导入导出</div><div class="header-actions"><span class="group-meta">4 项</span><button class="tiny-action" type="button" data-row-action data-message="已折叠章节">折叠</button><button class="tiny-action" type="button" data-row-action data-message="已打开章节菜单">菜单</button></div></div>
+          <div class="task-list" data-append-list>
+            <button class="task-row selected" type="button" data-task-row data-task-title="补齐数据导出前的导入预检状态" data-project="个人系统" data-date="今天" data-priority="高优先级" data-tags="导入预检,附件元数据"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">补齐数据导出前的导入预检状态</span><span class="task-meta"><span class="mini-tag">今天</span><span class="mini-tag">导入预检</span><span class="mini-tag">附件元数据</span></span></span><span class="task-actions"><span class="priority high"></span><span class="tiny-action" data-row-action data-message="已移动到附件章节">移动</span></span></button>
+            <button class="task-row" type="button" data-task-row data-task-title="导出 JSON 时排除附件文件本体" data-project="个人系统" data-date="本周" data-priority="中优先级" data-tags="导出"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">导出 JSON 时排除附件文件本体</span><span class="task-meta"><span class="mini-tag">本周</span><span class="mini-tag">导出</span></span></span><span class="task-actions"><span class="priority mid"></span><span class="tiny-action" data-row-action data-message="已打开日期选择">日期</span></span></button>
+            <button class="task-row" type="button" data-task-row data-task-title="导入成功后刷新全局任务数据" data-project="个人系统" data-date="下周" data-priority="普通" data-tags="导入"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">导入成功后刷新全局任务数据</span><span class="task-meta"><span class="mini-tag">下周</span><span class="mini-tag">导入</span></span></span><span class="task-actions"><span class="priority"></span><span class="tiny-action" data-row-action data-message="已打开详情">详情</span></span></button>
+          </div>
+        </section>
+        <section class="group">
+          <div class="group-header"><div class="group-title"><span class="dot warn"></span>通知与提醒</div><div class="header-actions"><span class="group-meta">2 项</span><button class="tiny-action" type="button" data-row-action data-message="已在本章节新建任务">+ 任务</button></div></div>
+          <div class="task-list">
+            <button class="task-row" type="button" data-task-row data-task-title="确认浏览器通知权限被拒绝时的说明文案" data-project="个人系统" data-date="今天" data-priority="中优先级" data-tags="通知"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">确认浏览器通知权限被拒绝时的说明文案</span><span class="task-meta"><span class="mini-tag">今天 18:00</span><span class="mini-tag">通知</span></span></span><span class="task-actions"><span class="priority mid"></span><span class="tiny-action" data-row-action data-message="已打开提醒弹层">提醒</span></span></button>
+            <button class="task-row" type="button" data-task-row data-task-title="默认提醒时间用于新建有日期任务" data-project="个人系统" data-date="无日期" data-priority="低优先级" data-tags="提醒"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">默认提醒时间用于新建有日期任务</span><span class="task-meta"><span class="mini-tag">无日期</span><span class="mini-tag">提醒</span></span></span><span class="task-actions"><span class="priority low"></span><span class="tiny-action" data-row-action data-message="已设置为明天">明天</span></span></button>
+          </div>
+        </section>
+        <section class="group">
+          <div class="group-header"><div class="group-title"><span class="dot success"></span>账号与外观</div><span class="group-meta">3 项</span></div>
+          <div class="task-list">
+            <button class="task-row" type="button" data-task-row data-task-title="账号安全页密码不一致错误状态" data-project="个人系统" data-date="下周" data-priority="普通" data-tags="账号"><span class="bulk-check">✓</span><span class="check" data-toggle-done>✓</span><span><span class="task-title">账号安全页密码不一致错误状态</span><span class="task-meta"><span class="mini-tag">下周</span><span class="mini-tag">账号</span></span></span><span class="task-actions"><span class="priority"></span><span class="tiny-action" data-row-action data-message="已打开详情">详情</span></span></button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <aside class="drawer open" data-drawer>
+      <div class="drawer-toolbar"><button class="icon-btn plain" type="button" data-close-drawer>×</button><span class="save-state" data-save-state>已保存 · 刚刚</span><button class="icon-btn plain">⋯</button></div>
+      <div class="drawer-content">
+        <textarea class="drawer-title" data-drawer-title>补齐数据导出前的导入预检状态</textarea>
+        <div class="property-grid">
+          <button class="property"><span class="property-label">项目</span><span class="property-value"><span data-drawer-project>个人系统</span><span class="mini-tag">数据导入导出</span></span></button>
+          <button class="property"><span class="property-label">日期</span><span class="property-value"><span class="chip strong" data-drawer-date>今天</span></span></button>
+          <button class="property"><span class="property-label">优先级</span><span class="property-value"><span class="priority high"></span><span data-drawer-priority>高优先级</span></span></button>
+          <button class="property"><span class="property-label">标签</span><span class="property-value"><span data-drawer-tags>导入预检,附件元数据</span></span></button>
+        </div>
+        <section class="panel"><div class="panel-title">章节逻辑</div><p class="page-subtitle" style="margin:0;">从项目 A 移动到项目 B 时，原章节会清空；在本页新建任务默认进入当前项目和当前章节。</p></section>
+      </div>
+    </aside>
+  </main>
+  <button class="fab" type="button" data-open-new>+</button>
+  <nav class="mobile-bottom"><a href="personal-todo-today-workspace.html">今日</a><a href="inbox.html">收件箱</a><a href="calendar.html">日历</a><a class="active" href="projects.html">项目</a><a href="settings.html">更多</a></nav>
+  <div class="modal-layer" data-new-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">新建任务</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><form class="dialog-body" data-create-form><div class="field"><label>任务标题</label><input class="input" required placeholder="例如：补齐附件导入失败状态" /></div><div class="field"><label>章节</label><select class="select"><option>数据导入导出</option><option>通知与提醒</option><option>账号与外观</option></select></div><button class="primary-add" type="submit">创建任务</button></form></div></div>
+  <div class="modal-layer" data-command-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><div class="dialog-body"><input class="input" placeholder="搜索本项目任务或章节" /><div class="cmd-list"><button class="cmd-item active" type="button" data-open-new><span class="file-icon">T</span><span><strong>新建项目任务</strong><span class="task-meta">默认个人系统</span></span><span class="shortcut">N</span></button><a class="cmd-item" href="projects.html"><span class="file-icon">P</span><span><strong>返回项目总览</strong><span class="task-meta">查看所有项目</span></span><span class="shortcut">G P</span></a></div></div></div></div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>

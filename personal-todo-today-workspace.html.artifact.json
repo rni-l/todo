@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "个人 TODO 今日工作台原型",
+  "entry": "personal-todo-today-workspace.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "primary": true,
+  "createdAt": "2026-06-07T07:50:28.088Z",
+  "updatedAt": "2026-06-07T07:50:28.116Z",
+  "sourceSkillId": "agent-browser",
+  "metadata": {
+    "identifier": "personal-todo-today-workspace",
+    "artifactType": "text/html",
+    "inferred": false
+  }
+}

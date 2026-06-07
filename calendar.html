@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 日历</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar">
+    <div class="brand-row" style="padding:0;"><div class="brand-mark">▦</div><div class="brand-copy"><strong>日历</strong><span>6月第 2 周</span></div></div>
+    <button class="icon-btn" type="button" data-open-command>⌘</button>
+  </div>
+
+  <main class="app-shell" data-od-id="calendar-page">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark">✓</div><div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div></div>
+      <button class="primary-add" type="button" data-open-new>+ 新建任务</button>
+      <nav class="nav-block">
+        <div class="nav-heading">主要视图</div>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">6</span></a>
+        <a class="nav-item" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item active" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+      </nav>
+      <nav class="nav-block">
+        <div class="nav-heading">智能过滤器</div>
+        <a class="nav-item" href="upcoming.html"><span>⚑</span><span>高优先级</span><span class="nav-count">3</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◴</span><span>有提醒</span><span class="nav-count">5</span></a>
+      </nav>
+      <div class="sidebar-bottom"><a class="nav-item" href="settings.html"><span>⚙</span><span>设置</span><span></span></a></div>
+    </aside>
+
+    <section class="main-pane" data-od-id="calendar-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">CALENDAR · 日期分布</p>
+          <h1 class="page-title">日历</h1>
+          <p class="page-subtitle">日历只按截止日期展示任务。提醒时间作为辅助文字显示，不形成时间块；拖动到日期格代表修改截止日期。</p>
+        </div>
+        <div class="header-actions">
+          <button class="quiet-button" type="button" data-row-action data-message="已回到今天">今天</button>
+          <button class="icon-btn" type="button" data-row-action data-message="已切换到上一周">‹</button>
+          <button class="icon-btn" type="button" data-row-action data-message="已切换到下一周">›</button>
+          <div class="segmented">
+            <button class="active" type="button" data-calendar-toggle="week">周</button>
+            <button type="button" data-calendar-toggle="month">月</button>
+          </div>
+          <button class="soft-button" type="button" data-open-new>新建任务</button>
+        </div>
+      </header>
+
+      <div class="calendar-shell">
+        <section class="calendar-view" data-calendar-view="week" data-od-id="week-view">
+          <div class="week-grid">
+            <article class="day-column">
+              <div class="day-head"><strong>周一</strong><span>6/8 · 3</span></div>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="给导入预检弹层补冲突说明" data-project="个人系统" data-date="6月8日" data-priority="高优先级" data-tags="导入"><strong>导入预检冲突说明</strong><span class="task-meta">09:00 提醒 · P1</span></button>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="整理移动端任务详情返回后的列表刷新" data-project="Open Design" data-date="6月8日" data-priority="中优先级" data-tags="移动端"><strong>移动端详情返回刷新</strong><span class="task-meta">Open Design</span></button>
+              <button class="tiny-action" type="button" data-open-new>+ 在这天新建</button>
+            </article>
+            <article class="day-column">
+              <div class="day-head"><strong>周二</strong><span>6/9 · 1</span></div>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="确认无日期任务是否进入智能过滤器全部视图" data-project="个人系统" data-date="6月9日" data-priority="普通" data-tags="过滤器"><strong>过滤器全部视图规则</strong><span class="task-meta">无提醒</span></button>
+            </article>
+            <article class="day-column today">
+              <div class="day-head"><strong>今天</strong><span>6/10 · 4</span></div>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="把项目删除时的任务处理确认补到设置菜单" data-project="个人系统" data-date="今天" data-priority="高优先级" data-tags="项目"><strong>项目删除处理确认</strong><span class="task-meta">高优先级</span></button>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="补齐通知权限拒绝说明" data-project="个人系统" data-date="今天" data-priority="中优先级" data-tags="通知"><strong>通知权限拒绝说明</strong><span class="task-meta">18:00 提醒</span></button>
+              <button class="calendar-pill" type="button" data-row-action data-message="已展开当天全部任务"><strong>还有 2 项</strong><span class="task-meta">点击查看</span></button>
+            </article>
+            <article class="day-column"><div class="day-head"><strong>周四</strong><span>6/11 · 0</span></div><button class="tiny-action" type="button" data-open-new>+ 在这天新建</button></article>
+            <article class="day-column">
+              <div class="day-head"><strong>周五</strong><span>6/12 · 2</span></div>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="验证重复任务完成后的下一次日期生成方式" data-project="服务器维护" data-date="周五" data-priority="中优先级" data-tags="重复"><strong>重复任务下一次日期</strong><span class="task-meta">每周重复</span></button>
+              <button class="calendar-pill" type="button" data-task-row data-task-title="备份服务器附件目录" data-project="服务器维护" data-date="周五" data-priority="普通" data-tags="附件"><strong>备份附件目录</strong><span class="task-meta">服务器维护</span></button>
+            </article>
+            <article class="day-column"><div class="day-head"><strong>周六</strong><span>6/13 · 1</span></div><button class="calendar-pill" type="button" data-task-row data-task-title="复查本周完成任务归档" data-project="个人系统" data-date="周六" data-priority="低优先级" data-tags="归档"><strong>复查完成任务归档</strong><span class="task-meta">低优先级</span></button></article>
+            <article class="day-column"><div class="day-head"><strong>周日</strong><span>6/14 · 0</span></div><button class="tiny-action" type="button" data-open-new>+ 在这天新建</button></article>
+          </div>
+        </section>
+
+        <section class="calendar-view" data-calendar-view="month" hidden data-od-id="month-view">
+          <div class="month-grid">
+            <article class="calendar-day muted"><div class="day-head"><strong>30</strong><span>0</span></div></article>
+            <article class="calendar-day"><div class="day-head"><strong>1</strong><span>1</span></div><span class="mini-tag">整理收件箱</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>2</strong><span>2</span></div><span class="mini-tag">导出 JSON</span><span class="mini-tag">通知测试</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>3</strong><span>0</span></div></article>
+            <article class="calendar-day"><div class="day-head"><strong>4</strong><span>1</span></div><span class="mini-tag">附件匹配</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>5</strong><span>2</span></div><span class="mini-tag">移动端详情</span><button type="button" data-row-action data-message="已展开 6月5日任务">还有 1 项</button></article>
+            <article class="calendar-day"><div class="day-head"><strong>6</strong><span>0</span></div></article>
+            <article class="calendar-day"><div class="day-head"><strong>7</strong><span>6</span></div><span class="mini-tag">今日页</span><span class="mini-tag">预检状态</span><button type="button" data-row-action data-message="已展开今天全部任务">还有 4 项</button></article>
+            <article class="calendar-day today"><div class="day-head"><strong>10</strong><span>4</span></div><span class="mini-tag">项目删除确认</span><span class="mini-tag">通知权限</span><button type="button" data-row-action data-message="已打开当天任务">还有 2 项</button></article>
+            <article class="calendar-day"><div class="day-head"><strong>12</strong><span>2</span></div><span class="mini-tag">重复任务</span><span class="mini-tag">服务器备份</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>15</strong><span>1</span></div><span class="mini-tag">过滤器预览</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>18</strong><span>1</span></div><span class="mini-tag">账号安全</span></article>
+            <article class="calendar-day"><div class="day-head"><strong>21</strong><span>0</span></div></article>
+            <article class="calendar-day muted"><div class="day-head"><strong>1</strong><span>0</span></div></article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <aside class="drawer open" data-drawer>
+      <div class="drawer-toolbar"><button class="icon-btn plain" type="button" data-close-drawer>×</button><span class="save-state" data-save-state>已保存 · 刚刚</span><button class="icon-btn plain">⋯</button></div>
+      <div class="drawer-content">
+        <textarea class="drawer-title" data-drawer-title>给导入预检弹层补冲突说明</textarea>
+        <div class="property-grid">
+          <button class="property" type="button"><span class="property-label">项目</span><span class="property-value"><span data-drawer-project>个人系统</span></span></button>
+          <button class="property" type="button"><span class="property-label">日期</span><span class="property-value"><span class="chip strong" data-drawer-date>6月8日</span></span></button>
+          <button class="property" type="button"><span class="property-label">优先级</span><span class="property-value"><span class="priority high"></span><span data-drawer-priority>高优先级</span></span></button>
+          <button class="property" type="button"><span class="property-label">标签</span><span class="property-value"><span data-drawer-tags>导入</span></span></button>
+        </div>
+        <section class="panel"><div class="panel-title">日历联动</div><p class="page-subtitle" style="margin:0;">在日历中改期后，今日页、即将到来页和任务详情里的日期会同步刷新。</p></section>
+      </div>
+    </aside>
+  </main>
+
+  <button class="fab" type="button" data-open-new>+</button>
+  <nav class="mobile-bottom"><a href="personal-todo-today-workspace.html">今日</a><a href="inbox.html">收件箱</a><a class="active" href="calendar.html">日历</a><a href="projects.html">项目</a><a href="settings.html">更多</a></nav>
+  <div class="modal-layer" data-new-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">新建任务</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><form class="dialog-body" data-create-form><div class="field"><label>任务标题</label><input class="input" required placeholder="例如：在 6月10日添加任务" /></div><div class="field"><label>日期</label><select class="select"><option>6月10日</option><option>今天</option><option>明天</option></select></div><button class="primary-add" type="submit">创建任务</button></form></div></div>
+  <div class="modal-layer" data-command-modal aria-hidden="true"><div class="dialog"><div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div><div class="dialog-body"><input class="input" placeholder="搜索日期、任务或动作" /><div class="cmd-list"><button class="cmd-item active" type="button" data-row-action data-message="已回到今天"><span class="file-icon">今</span><span><strong>回到今天</strong><span class="task-meta">定位当前日期</span></span><span class="shortcut">T</span></button><button class="cmd-item" type="button" data-open-new><span class="file-icon">+</span><span><strong>在当前日期新建</strong><span class="task-meta">默认写入选中日期</span></span><span class="shortcut">N</span></button></div></div></div></div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>

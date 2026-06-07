@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · 设置</title>
+  <link rel="stylesheet" href="assets/todo-app.css" />
+</head>
+<body>
+  <div class="mobile-topbar">
+    <div class="brand-row" style="padding:0;"><div class="brand-mark">⚙</div><div class="brand-copy"><strong>设置</strong><span>账号、通知与数据</span></div></div>
+    <button class="icon-btn" type="button" data-open-command>⌘</button>
+  </div>
+
+  <main class="app-shell no-drawer" data-od-id="settings-page">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark">✓</div><div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div></div>
+      <button class="primary-add" type="button" data-open-new>+ 新建任务</button>
+      <nav class="nav-block">
+        <div class="nav-heading">主要视图</div>
+        <a class="nav-item" href="personal-todo-today-workspace.html"><span>☑</span><span>今日</span><span class="nav-count">6</span></a>
+        <a class="nav-item" href="inbox.html"><span>▣</span><span>收件箱</span><span class="nav-count">4</span></a>
+        <a class="nav-item" href="upcoming.html"><span>◷</span><span>即将到来</span><span class="nav-count">12</span></a>
+        <a class="nav-item" href="calendar.html"><span>▦</span><span>日历</span><span class="nav-count">7</span></a>
+      </nav>
+      <div class="sidebar-bottom"><a class="nav-item active" href="settings.html"><span>⚙</span><span>设置</span><span></span></a><a class="nav-item" href="index.html"><span>⌂</span><span>页面入口</span><span></span></a></div>
+    </aside>
+
+    <section class="main-pane" data-od-id="settings-main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SETTINGS · 单用户配置</p>
+          <h1 class="page-title">设置</h1>
+          <p class="page-subtitle">集中管理账号安全、外观、通知、数据导入导出和附件恢复。危险操作保留确认，不在列表里直接执行。</p>
+        </div>
+        <div class="header-actions">
+          <button class="quiet-button danger-button" type="button" data-confirm-action="退出登录前需要确认">退出登录</button>
+          <button class="soft-button" type="button" data-open-command>命令面板</button>
+        </div>
+      </header>
+
+      <section class="settings-grid" data-od-id="settings-cards">
+        <article class="settings-card">
+          <header><span class="chip strong">账号与安全</span><span class="group-meta">当前会话有效</span></header>
+          <p>当前账号、修改密码、会话信息和退出登录确认。</p>
+          <button class="tiny-action" type="button" data-settings-tab="account">进入设置</button>
+        </article>
+        <article class="settings-card">
+          <header><span class="chip">外观</span><span class="group-meta">跟随系统</span></header>
+          <p>主题模式、界面密度和侧边栏显示偏好，设置即时生效。</p>
+          <button class="tiny-action" type="button" data-settings-tab="appearance">进入设置</button>
+        </article>
+        <article class="settings-card">
+          <header><span class="chip warn">通知</span><span class="group-meta">权限未请求</span></header>
+          <p>浏览器通知权限、测试通知和默认提醒时间。</p>
+          <button class="tiny-action" type="button" data-settings-tab="notifications">进入设置</button>
+        </article>
+        <article class="settings-card">
+          <header><span class="chip">数据导入导出</span><span class="group-meta">上次导出 2 天前</span></header>
+          <p>导出 JSON、选择导入文件、预检冲突和确认导入。</p>
+          <button class="tiny-action" type="button" data-settings-tab="data">进入设置</button>
+        </article>
+        <article class="settings-card">
+          <header><span class="chip">附件导入导出</span><span class="group-meta">18 个附件</span></header>
+          <p>附件 ZIP 导出、元数据匹配、缺失附件恢复和导入失败状态。</p>
+          <button class="tiny-action" type="button" data-settings-tab="attachments">进入设置</button>
+        </article>
+        <article class="settings-card">
+          <header><span class="chip">应用信息</span><span class="group-meta">PWA 可安装</span></header>
+          <p>部署版本、离线状态、存储位置和浏览器支持说明。</p>
+          <button class="tiny-action" type="button" data-settings-tab="about">查看信息</button>
+        </article>
+      </section>
+
+      <section class="section-list" style="margin-top:22px;" data-od-id="settings-detail">
+        <nav class="section-tabs" aria-label="设置分组">
+          <button class="active" type="button" data-settings-tab="account">账号与安全</button>
+          <button type="button" data-settings-tab="appearance">外观</button>
+          <button type="button" data-settings-tab="notifications">通知</button>
+          <button type="button" data-settings-tab="data">数据导入导出</button>
+          <button type="button" data-settings-tab="attachments">附件导入导出</button>
+          <button type="button" data-settings-tab="about">应用信息</button>
+        </nav>
+
+        <div class="task-board">
+          <section class="group settings-panel" data-settings-panel="account">
+            <div class="group-header"><div class="group-title"><span class="dot"></span>账号与安全</div><span class="group-meta">当前账号 self-hosted-user</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="form-grid">
+                <div class="field"><label>当前账号</label><input class="input" value="self-hosted-user" readonly /></div>
+                <div class="field"><label>当前密码</label><input class="input" type="password" placeholder="输入当前密码" /></div>
+                <div class="field"><label>新密码</label><input class="input" type="password" placeholder="至少 8 位" /></div>
+                <div class="field"><label>再次输入新密码</label><input class="input" type="password" placeholder="确认新密码" /></div>
+                <div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="button" data-confirm-action="密码保存成功">保存新密码</button><button class="quiet-button danger-button" type="button" data-confirm-action="退出登录前需要确认">退出登录</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="group settings-panel" data-settings-panel="appearance" hidden>
+            <div class="group-header"><div class="group-title"><span class="dot success"></span>外观</div><span class="group-meta">即时生效</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="segmented" style="justify-self:start;"><button class="active" type="button">系统</button><button type="button">浅色</button><button type="button">深色</button></div>
+              <div class="switch-row"><div><strong>紧凑任务行</strong><p class="page-subtitle" style="margin:2px 0 0;">桌面任务行从 56px 降低到 44px。</p></div><button class="switch" type="button"></button></div>
+              <div class="switch-row"><div><strong>固定右侧详情抽屉</strong><p class="page-subtitle" style="margin:2px 0 0;">宽屏时保持详情常驻，窄屏自动切为覆盖层。</p></div><button class="switch on" type="button"></button></div>
+              <div class="panel" style="background:var(--accent-quiet);"><div class="panel-title">预览</div><button class="task-row" type="button" style="border:0;"><span class="check">✓</span><span><span class="task-title">主题变化会同步影响 PWA 启动后的默认外观</span><span class="task-meta"><span class="mini-tag">外观</span><span class="mini-tag">即时生效</span></span></span><span class="task-actions"><span class="priority low"></span></span></button></div>
+            </div>
+          </section>
+
+          <section class="group settings-panel" data-settings-panel="notifications" hidden>
+            <div class="group-header"><div class="group-title"><span class="dot warn"></span>通知</div><span class="group-meta">权限未请求</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="empty-state" style="padding:24px;"><h2>尚未开启浏览器通知</h2><p>首次创建带提醒时间的任务时，也会提示开启。若浏览器权限被拒绝，需要到浏览器设置中手动恢复。</p><div class="header-actions"><button class="soft-button" type="button" data-confirm-action="已触发浏览器权限请求">开启通知</button><button class="quiet-button" type="button" data-confirm-action="测试通知已发送">发送测试通知</button></div></div>
+              <div class="field"><label>默认提醒时间</label><select class="select"><option>当天 09:00</option><option>当天 12:00</option><option>前一天 18:00</option><option>不自动设置</option></select></div>
+              <div class="switch-row"><div><strong>PWA 中使用本地通知</strong><p class="page-subtitle" style="margin:2px 0 0;">浏览器支持时，到点后在 PWA 或活跃页面触发通知。</p></div><button class="switch" type="button"></button></div>
+            </div>
+          </section>
+
+          <section class="group settings-panel" data-settings-panel="data" hidden>
+            <div class="group-header"><div class="group-title"><span class="dot"></span>数据导入导出</div><span class="group-meta">任务、项目、标签、提醒、重复规则</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="stat-strip" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:0;"><article class="stat-card"><strong>128</strong><span>任务</span></article><article class="stat-card"><strong>4</strong><span>项目</span></article><article class="stat-card"><strong>8</strong><span>标签</span></article><article class="stat-card"><strong>6</strong><span>过滤器</span></article></div>
+              <div class="panel"><div class="panel-title">导出数据</div><p class="page-subtitle" style="margin:0;">数据导出包含任务、项目、章节、标签、过滤器、提醒、重复规则和附件元数据，不包含附件文件本体。</p><div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="button" data-confirm-action="JSON 导出已开始">导出 JSON</button><button class="quiet-button" type="button" data-confirm-action="SQLite 快照导出已加入队列">导出 SQLite 快照</button></div></div>
+              <div class="panel"><div class="panel-title">导入数据</div><p class="page-subtitle" style="margin:0;">导入必须先预检。预检会显示文件版本、数量、冲突、缺失附件和风险确认。</p><div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="button" data-confirm-action="已选择导入文件">选择导入文件</button><button class="soft-button" type="button" data-confirm-action="预检弹层已打开">开始预检</button><button class="quiet-button danger-button" type="button" data-confirm-action="确认导入前需要二次确认">确认导入</button></div></div>
+            </div>
+          </section>
+
+          <section class="group settings-panel" data-settings-panel="attachments" hidden>
+            <div class="group-header"><div class="group-title"><span class="dot success"></span>附件导入导出</div><span class="group-meta">18 个文件 · 94 MB</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="stat-strip" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:0;"><article class="stat-card"><strong>18</strong><span>附件</span></article><article class="stat-card"><strong>94MB</strong><span>总大小</span></article><article class="stat-card"><strong>2</strong><span>缺失附件</span></article></div>
+              <div class="file-row"><span class="file-icon">ZIP</span><span><strong>attachments-export-2026-06-07.zip</strong><span class="task-meta">内部存储 ID 匹配 · 可恢复缺失文件</span></span><button class="tiny-action" type="button" data-confirm-action="附件导出已开始">导出</button></div>
+              <div class="file-row"><span class="file-icon">ERR</span><span><strong>部分匹配状态</strong><span class="task-meta">2 个元数据存在但文件缺失，1 个 ZIP 文件未被使用</span></span><button class="tiny-action" type="button" data-confirm-action="附件匹配预览已打开">预览</button></div>
+              <div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="button" data-confirm-action="已选择附件 ZIP">选择附件 ZIP</button><button class="soft-button" type="button" data-confirm-action="开始匹配附件元数据">开始匹配</button><button class="quiet-button danger-button" type="button" data-confirm-action="导入附件前需要确认">确认导入附件</button></div>
+            </div>
+          </section>
+
+          <section class="group settings-panel" data-settings-panel="about" hidden>
+            <div class="group-header"><div class="group-title"><span class="dot muted"></span>应用信息</div><span class="group-meta">self-hosted</span></div>
+            <div class="panel" style="border:0;border-radius:0;">
+              <div class="file-row"><span class="file-icon">PWA</span><span><strong>PWA 可安装</strong><span class="task-meta">安装后仍使用同一服务端和登录会话</span></span><button class="tiny-action" type="button" data-confirm-action="已打开安装提示">安装</button></div>
+              <div class="file-row"><span class="file-icon">NET</span><span><strong>在线优先</strong><span class="task-meta">离线能力后续扩展，第一版以在线数据一致性为主</span></span><span class="chip success">正常</span></div>
+              <div class="file-row"><span class="file-icon">VER</span><span><strong>原型版本</strong><span class="task-meta">2026-06-07 页面级原型</span></span><span class="chip">v0.1</span></div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <button class="fab" type="button" data-open-new>+</button>
+  <nav class="mobile-bottom"><a href="personal-todo-today-workspace.html">今日</a><a href="inbox.html">收件箱</a><a href="calendar.html">日历</a><a href="projects.html">项目</a><a class="active" href="settings.html">更多</a></nav>
+
+  <div class="modal-layer" data-new-modal aria-hidden="true">
+    <div class="dialog">
+      <div class="dialog-head"><h2 style="font-size:24px;">新建任务</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div>
+      <form class="dialog-body" data-create-form>
+        <div class="field"><label>任务标题</label><input class="input" required placeholder="例如：补齐通知已拒绝状态文案" /></div>
+        <div class="field"><label>项目</label><select class="select"><option>个人系统</option><option>收件箱</option></select></div>
+        <button class="primary-add" type="submit">创建任务</button>
+      </form>
+    </div>
+  </div>
+  <div class="modal-layer" data-command-modal aria-hidden="true">
+    <div class="dialog">
+      <div class="dialog-head"><h2 style="font-size:24px;">命令面板</h2><button class="icon-btn plain" type="button" data-close-modal>×</button></div>
+      <div class="dialog-body">
+        <input class="input" placeholder="搜索设置或动作" />
+        <div class="cmd-list">
+          <button class="cmd-item active" type="button" data-settings-tab="data"><span class="file-icon">D</span><span><strong>打开数据导入导出</strong><span class="task-meta">导出 JSON 或开始预检</span></span><span class="shortcut">Enter</span></button>
+          <button class="cmd-item" type="button" data-settings-tab="notifications"><span class="file-icon">N</span><span><strong>打开通知设置</strong><span class="task-meta">权限与默认提醒</span></span><span class="shortcut">G N</span></button>
+          <button class="cmd-item" type="button" data-settings-tab="attachments"><span class="file-icon">Z</span><span><strong>打开附件导入导出</strong><span class="task-meta">ZIP 匹配与恢复</span></span><span class="shortcut">G A</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" data-toast>已更新</div>
+  <script src="assets/todo-app.js"></script>
+</body>
+</html>
