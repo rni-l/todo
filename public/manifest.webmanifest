@@ -1,0 +1,17 @@
+{
+  "name": "个人 TODO",
+  "short_name": "TODO",
+  "description": "自托管单用户个人待办工作台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f8fa",
+  "theme_color": "#f4f8fa",
+  "icons": [
+    {
+      "src": "/assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

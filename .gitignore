@@ -1,2 +1,7 @@
-.env
-node_modules
+node_modules/
+.DS_Store
+data/*.json.tmp
+data/todo-data.json
+data/uploads/
+data/tmp/
+coverage/
