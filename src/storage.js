@@ -6,6 +6,7 @@ import { createPasswordRecord, verifyPassword } from './auth.js';
 const DATA_VERSION = 1;
 const DEFAULT_USERNAME = process.env.TODO_USERNAME || 'self-hosted-user';
 const DEFAULT_PASSWORD = process.env.TODO_PASSWORD || 'todo123456';
+const DEFAULT_CALENDAR_DAY_LIMIT = 3;
 
 export function createId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -32,6 +33,36 @@ function nowISO() {
 
 function priorityWeight(priority) {
   return { high: 3, medium: 2, low: 1, none: 0 }[priority] || 0;
+}
+
+function normalizeCalendarDayLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_CALENDAR_DAY_LIMIT;
+  return Math.min(6, Math.max(1, parsed));
+}
+
+function normalizeSubtask(input = {}, index = 0) {
+  return {
+    id: input.id || createId('sub'),
+    title: String(input.title || '').trim() || '未命名子任务',
+    completed: Boolean(input.completed),
+    order: Number.isFinite(input.order) ? input.order : index + 1,
+    dueDate: input.dueDate || null,
+    priority: ['none', 'low', 'medium', 'high'].includes(input.priority) ? input.priority : 'none'
+  };
+}
+
+function normalizeSettings(input = {}, existing = {}) {
+  return {
+    theme: input.theme ?? existing.theme ?? 'system',
+    density: input.density ?? existing.density ?? 'comfortable',
+    defaultReminderTime: input.defaultReminderTime ?? existing.defaultReminderTime ?? '09:00',
+    notificationsEnabled: Boolean(input.notificationsEnabled ?? existing.notificationsEnabled ?? false),
+    dockDrawer: Boolean(input.dockDrawer ?? existing.dockDrawer ?? true),
+    compactRows: Boolean(input.compactRows ?? existing.compactRows ?? false),
+    pwaInstallDismissed: Boolean(input.pwaInstallDismissed ?? existing.pwaInstallDismissed ?? false),
+    calendarDayLimit: normalizeCalendarDayLimit(input.calendarDayLimit ?? existing.calendarDayLimit)
+  };
 }
 
 function seedData() {
@@ -116,7 +147,8 @@ function seedData() {
       notificationsEnabled: false,
       dockDrawer: true,
       compactRows: false,
-      pwaInstallDismissed: false
+      pwaInstallDismissed: false,
+      calendarDayLimit: DEFAULT_CALENDAR_DAY_LIMIT
     },
     projects,
     tags,
@@ -165,8 +197,8 @@ function taskSeed(title, input = {}) {
     recurrence: input.recurrence ?? null,
     description: input.description ?? '',
     subtasks: [
-      { id: createId('sub'), title: '确认页面状态', completed: false, order: 1 },
-      { id: createId('sub'), title: '补齐移动端检查', completed: false, order: 2 }
+      normalizeSubtask({ title: '确认页面状态', completed: false, order: 1 }),
+      normalizeSubtask({ title: '补齐移动端检查', completed: false, order: 2 }, 1)
     ],
     attachments: [],
     order: input.order ?? 0,
@@ -192,12 +224,9 @@ function normalizeTask(input, existing = {}) {
     tags: has('tags') && Array.isArray(input.tags) ? input.tags : existing.tags || [],
     recurrence: has('recurrence') ? input.recurrence || null : existing.recurrence ?? null,
     description: has('description') ? input.description ?? '' : existing.description ?? '',
-    subtasks: has('subtasks') && Array.isArray(input.subtasks) ? input.subtasks.map((subtask, index) => ({
-      id: subtask.id || createId('sub'),
-      title: String(subtask.title || '').trim() || '未命名子任务',
-      completed: Boolean(subtask.completed),
-      order: Number.isFinite(subtask.order) ? subtask.order : index + 1
-    })) : existing.subtasks || [],
+    subtasks: has('subtasks') && Array.isArray(input.subtasks)
+      ? input.subtasks.map((subtask, index) => normalizeSubtask(subtask, index))
+      : (existing.subtasks || []).map((subtask, index) => normalizeSubtask(subtask, index)),
     attachments: has('attachments') && Array.isArray(input.attachments) ? input.attachments : existing.attachments || [],
     order: Number.isFinite(input.order) ? input.order : existing.order ?? Date.now(),
     createdAt: existing.createdAt || input.createdAt || timestamp,
@@ -281,16 +310,7 @@ export class TodoStore {
         username: DEFAULT_USERNAME,
         password: createPasswordRecord(DEFAULT_PASSWORD)
       },
-      settings: {
-        theme: 'system',
-        density: 'comfortable',
-        defaultReminderTime: '09:00',
-        notificationsEnabled: false,
-        dockDrawer: true,
-        compactRows: false,
-        pwaInstallDismissed: false,
-        ...(payload.settings || {})
-      },
+      settings: normalizeSettings(payload.settings || {}),
       projects: Array.isArray(payload.projects) ? payload.projects.map(project => normalizeProject(project)) : [],
       tags: Array.isArray(payload.tags) ? payload.tags.map(tag => normalizeTag(tag)) : [],
       filters: Array.isArray(payload.filters) ? payload.filters.map(filter => normalizeFilter(filter)) : [],
@@ -403,7 +423,7 @@ export class TodoStore {
       dueDate: nextDate,
       createdAt: nowISO(),
       attachments: [],
-      subtasks: task.subtasks.map(subtask => ({ ...subtask, id: createId('sub'), completed: false }))
+      subtasks: task.subtasks.map((subtask, index) => normalizeSubtask({ ...subtask, id: createId('sub'), completed: false }, index))
     });
     this.data.tasks.push(copy);
     return copy;
@@ -496,7 +516,7 @@ export class TodoStore {
   }
 
   async updateSettings(patch) {
-    this.data.settings = { ...this.data.settings, ...patch };
+    this.data.settings = normalizeSettings({ ...this.data.settings, ...patch }, this.data.settings);
     await this.save();
     return this.data.settings;
   }

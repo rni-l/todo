@@ -62,20 +62,77 @@ test('task urgent flag defaults false and can be updated', async () => {
   assert.equal(cleared.urgent, false);
 });
 
-test('task update persists edited subtask titles', async () => {
+test('legacy payloads backfill calendar day limit and subtask metadata', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const filePath = path.join(dataDir, 'todo-data.json');
+  const payload = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  delete payload.settings.calendarDayLimit;
+  payload.tasks = [
+    {
+      ...payload.tasks[0],
+      subtasks: [{ id: 'sub_legacy', title: 'Legacy subtask', completed: false, order: 1 }]
+    }
+  ];
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2));
+
+  const migrated = new TodoStore({ dataDir });
+  await migrated.init();
+
+  assert.equal(migrated.data.settings.calendarDayLimit, 3);
+  assert.deepEqual(migrated.data.tasks[0].subtasks[0], {
+    id: 'sub_legacy',
+    title: 'Legacy subtask',
+    completed: false,
+    order: 1,
+    dueDate: null,
+    priority: 'none'
+  });
+});
+
+test('task update persists edited subtask metadata', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });
   await store.init();
   const task = await store.createTask({
     title: 'subtask edits',
-    subtasks: [{ id: 'sub_keep', title: 'Before', completed: false, order: 1 }]
+    subtasks: [{ id: 'sub_keep', title: 'Before', completed: false, order: 1, dueDate: '2026-06-08', priority: 'low' }]
   });
   const updated = await store.updateTask(task.id, {
-    subtasks: [{ id: 'sub_keep', title: 'After', completed: false, order: 1 }]
+    subtasks: [{ id: 'sub_keep', title: 'After', completed: false, order: 1, dueDate: '2026-06-09', priority: 'high' }]
   });
   assert.equal(updated.subtasks.length, 1);
   assert.equal(updated.subtasks[0].id, 'sub_keep');
   assert.equal(updated.subtasks[0].title, 'After');
+  assert.equal(updated.subtasks[0].dueDate, '2026-06-09');
+  assert.equal(updated.subtasks[0].priority, 'high');
+});
+
+test('recurring copies preserve subtask date and priority metadata', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({
+    title: 'weekly review',
+    dueDate: '2026-06-08',
+    recurrence: { type: 'weekly', interval: 1 },
+    subtasks: [{ id: 'sub_keep', title: 'Review notes', completed: true, order: 1, dueDate: '2026-06-09', priority: 'medium' }]
+  });
+
+  await store.updateTask(task.id, { completed: true });
+
+  const copy = store.data.tasks.find(item => item.id !== task.id && item.title === 'weekly review' && !item.completed);
+  assert.ok(copy);
+  assert.equal(copy.dueDate, '2026-06-15');
+  assert.deepEqual(copy.subtasks[0], {
+    id: copy.subtasks[0].id,
+    title: 'Review notes',
+    completed: false,
+    order: 1,
+    dueDate: '2026-06-09',
+    priority: 'medium'
+  });
 });
 
 test('filter update preserves pinned state when omitted', async () => {

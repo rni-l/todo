@@ -8,6 +8,8 @@ import { TodoStore } from './src/storage.js';
 import { createZip, parseZip } from './src/zip.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(await fs.readFile(path.join(__dirname, 'package.json'), 'utf8'));
+const APP_VERSION = packageJson.version || '0.0.0';
 const publicDir = path.join(__dirname, 'public');
 const prototypeDir = __dirname;
 const port = Number(process.env.PORT || 38887);
@@ -30,6 +32,12 @@ const mimeTypes = new Map([
   ['.ico', 'image/x-icon'],
   ['.webmanifest', 'application/manifest+json; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8']
+]);
+
+const templatedFiles = new Set([
+  path.join(publicDir, 'index.html'),
+  path.join(publicDir, 'sw.js'),
+  path.join(publicDir, 'assets', 'app.js')
 ]);
 
 function parseCookies(cookieHeader = '') {
@@ -73,6 +81,14 @@ function text(res, status, body, headers = {}) {
     ...headers
   });
   res.end(body);
+}
+
+function isTemplatedFile(filePath) {
+  return templatedFiles.has(filePath);
+}
+
+function renderTemplate(content) {
+  return content.replaceAll('__APP_VERSION__', APP_VERSION);
 }
 
 async function readBody(req, limit = maxJsonBytes) {
@@ -242,10 +258,22 @@ async function sendFile(res, filePath, extraHeaders = {}) {
   const extension = path.extname(filePath);
   const type = mimeTypes.get(extension) || 'application/octet-stream';
   const stat = await fs.stat(filePath);
+  const cacheControl = path.basename(filePath) === 'sw.js' || extension === '.html' ? 'no-cache' : 'public, max-age=3600';
+  if (isTemplatedFile(filePath)) {
+    const body = renderTemplate(await fs.readFile(filePath, 'utf8'));
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Content-Length': Buffer.byteLength(body),
+      'Cache-Control': cacheControl,
+      ...extraHeaders
+    });
+    res.end(body);
+    return;
+  }
   res.writeHead(200, {
     'Content-Type': type,
     'Content-Length': stat.size,
-    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=3600',
+    'Cache-Control': cacheControl,
     ...extraHeaders
   });
   fsSync.createReadStream(filePath).pipe(res);
