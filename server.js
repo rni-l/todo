@@ -309,7 +309,11 @@ async function sendDownload(res, filePath, filename, type = 'application/octet-s
 
 async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    json(res, 200, { ok: true, version: store.data.version });
+    json(res, 200, {
+      ok: true,
+      appVersion: APP_VERSION,
+      dataVersion: store.data.version
+    });
     return;
   }
 
@@ -627,6 +631,9 @@ server.on('error', error => {
 
 server.listen(port, () => {
   console.log(`Personal TODO is running at http://localhost:${port}`);
+  console.log(`App version: ${APP_VERSION}`);
+  console.log(`Runtime root: ${process.cwd()}`);
+  console.log(`Data directory: ${store.dataDir}`);
   console.log(`Prototype reference is available at http://localhost:${port}/prototype/index.html`);
   if (!process.env.TODO_PASSWORD) {
     console.log('Default login password: todo123456');

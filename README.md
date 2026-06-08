@@ -38,19 +38,50 @@ The app stores JSON data and uploaded files under `data/` by default:
 
 Original static prototype files remain available from the running server at `/prototype/index.html`.
 
-## PM2
+## Release Snapshot
 
-The repository includes `ecosystem.config.cjs` for PM2 deployment. It runs the app as `personal-todo` on port `38887` and uses `./data` as the data directory.
+`v1.4` starts the online service from a packaged release snapshot instead of the active working tree. This lets you keep developing the next version without changing the files PM2 is serving.
+
+Build a release snapshot:
 
 ```bash
+npm run release:build
+```
+
+This creates:
+
+- `.deploy/releases/<release-name>/`: immutable runtime snapshot
+- `.deploy/current`: symlink pointing at the active snapshot
+- `.deploy/shared/logs/`: PM2 stdout/stderr logs
+
+## PM2
+
+The repository includes `ecosystem.config.cjs` for PM2 deployment. It runs the app as `personal-todo` on port `38887` from `.deploy/current` and continues to use the existing `./data` directory by default.
+
+If you want production to use another data directory, set `TODO_DATA_DIR` before starting PM2. If you want local development to avoid touching production data, run dev with another path, for example:
+
+```bash
+TODO_DATA_DIR=./data-dev npm run dev
+```
+
+First deployment:
+
+```bash
+npm run release:build
 npm run pm2:start
 npm run pm2:logs
 ```
 
-To restart or stop the process:
+Update an existing deployment:
 
 ```bash
+npm run release:build
 npm run pm2:restart
+```
+
+Stop the process:
+
+```bash
 npm run pm2:stop
 ```
 
@@ -72,7 +103,7 @@ npm run pm2:stop
 npm test
 ```
 
-```
-pgrep -af myself-todo
-lsof :i 38887
+```bash
+pgrep -af personal-todo
+lsof -i :38887
 ```

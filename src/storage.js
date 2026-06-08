@@ -281,9 +281,9 @@ function normalizeFilter(input, existing = {}) {
 
 export class TodoStore {
   constructor({ dataDir = process.env.TODO_DATA_DIR || path.join(process.cwd(), 'data') } = {}) {
-    this.dataDir = dataDir;
-    this.uploadDir = path.join(dataDir, 'uploads');
-    this.filePath = path.join(dataDir, 'todo-data.json');
+    this.dataDir = path.resolve(dataDir);
+    this.uploadDir = path.join(this.dataDir, 'uploads');
+    this.filePath = path.join(this.dataDir, 'todo-data.json');
     this.data = null;
   }
 

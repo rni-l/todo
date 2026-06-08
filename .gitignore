@@ -5,3 +5,4 @@ data/todo-data.json
 data/uploads/
 data/tmp/
 coverage/
+.deploy/
