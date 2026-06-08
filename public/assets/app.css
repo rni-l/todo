@@ -91,13 +91,20 @@ svg { display: block; }
 }
 
 .login-card {
+  width: min(520px, 100%);
   display: grid;
   gap: 18px;
 }
 
 .login-title {
   display: grid;
-  gap: 8px;
+  gap: 12px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .login-title h1 {
@@ -106,6 +113,44 @@ svg { display: block; }
 }
 
 .login-title p { color: var(--muted); }
+.login-points {
+  display: grid;
+  gap: 10px;
+}
+.login-point {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--surface) 84%, transparent);
+}
+.login-point strong {
+  font-size: 13px;
+  font-weight: 750;
+}
+.login-point span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.password-field .input {
+  min-width: 0;
+}
+.login-toggle {
+  min-width: 64px;
+}
+.login-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
 .app-shell {
   min-height: 100vh;

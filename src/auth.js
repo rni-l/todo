@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 const ITERATIONS = 210000;
 const KEY_LENGTH = 64;
 const DIGEST = 'sha512';
+const SESSION_DIGEST = 'sha256';
 
 export function createPasswordRecord(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -27,36 +28,43 @@ export function verifyPassword(password, record) {
   return crypto.timingSafeEqual(expected, candidate);
 }
 
-export class SessionManager {
-  constructor({ ttlMs = 1000 * 60 * 60 * 24 * 14 } = {}) {
-    this.ttlMs = ttlMs;
-    this.sessions = new Map();
-  }
+export function createSessionSecret(record, explicitSecret = '') {
+  if (explicitSecret) return String(explicitSecret);
+  if (!record?.hash || !record?.salt) return '';
+  return [record.hash, record.salt, record.iterations || ITERATIONS, record.digest || DIGEST].join('.');
+}
 
-  create(username) {
-    const id = crypto.randomBytes(32).toString('base64url');
-    const now = Date.now();
-    this.sessions.set(id, {
-      username,
-      createdAt: now,
-      expiresAt: now + this.ttlMs
-    });
-    return id;
-  }
+function signSessionPayload(payload, secret) {
+  return crypto.createHmac(SESSION_DIGEST, secret).update(payload).digest('base64url');
+}
 
-  get(id) {
-    if (!id) return null;
-    const session = this.sessions.get(id);
-    if (!session) return null;
-    if (session.expiresAt < Date.now()) {
-      this.sessions.delete(id);
-      return null;
-    }
-    session.expiresAt = Date.now() + this.ttlMs;
-    return session;
-  }
+export function createSessionToken({ username, expiresAt }, secret) {
+  if (!secret) throw new Error('missing_session_secret');
+  const payload = Buffer.from(JSON.stringify({
+    username: String(username || ''),
+    expiresAt: Number(expiresAt) || Date.now()
+  })).toString('base64url');
+  return `${payload}.${signSessionPayload(payload, secret)}`;
+}
 
-  destroy(id) {
-    if (id) this.sessions.delete(id);
+export function verifySessionToken(token, secret) {
+  if (!token || !secret) return null;
+  const [payload, signature] = String(token).split('.');
+  if (!payload || !signature) return null;
+  const expected = signSessionPayload(payload, secret);
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (expectedBuffer.length !== signatureBuffer.length) return null;
+  if (!crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!parsed?.username || !Number.isFinite(parsed.expiresAt)) return null;
+    if (parsed.expiresAt < Date.now()) return null;
+    return {
+      username: String(parsed.username),
+      expiresAt: Number(parsed.expiresAt)
+    };
+  } catch {
+    return null;
   }
 }

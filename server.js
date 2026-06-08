@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SessionManager } from './src/auth.js';
+import { createSessionSecret, createSessionToken, verifySessionToken } from './src/auth.js';
 import { TodoStore } from './src/storage.js';
 import { createZip, parseZip } from './src/zip.js';
 
@@ -15,10 +15,10 @@ const prototypeDir = __dirname;
 const port = Number(process.env.PORT || 38887);
 const maxJsonBytes = 12 * 1024 * 1024;
 const maxUploadBytes = 110 * 1024 * 1024;
+const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
 
 const store = new TodoStore();
 await store.init();
-const sessions = new SessionManager();
 
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -52,6 +52,17 @@ function parseCookies(cookieHeader = '') {
         return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
       })
   );
+}
+
+function sessionSecret() {
+  return createSessionSecret(store.data?.auth?.password, process.env.TODO_SESSION_SECRET || '');
+}
+
+function createSession(username) {
+  return createSessionToken({
+    username,
+    expiresAt: Date.now() + sessionTtlMs
+  }, sessionSecret());
 }
 
 function setSessionCookie(res, sessionId) {
@@ -120,9 +131,14 @@ async function readJson(req) {
 
 function getSession(req) {
   const cookies = parseCookies(req.headers.cookie || '');
+  const token = cookies.todo_session;
+  const value = verifySessionToken(token, sessionSecret());
+  if (!value || value.username !== store.data.auth.username) {
+    return { id: token, value: null };
+  }
   return {
-    id: cookies.todo_session,
-    value: sessions.get(cookies.todo_session)
+    id: token,
+    value
   };
 }
 
@@ -132,6 +148,7 @@ function requireAuth(req, res) {
     json(res, 401, { error: 'unauthorized' });
     return null;
   }
+  setSessionCookie(res, createSession(session.value.username));
   return session;
 }
 
@@ -303,7 +320,7 @@ async function api(req, res, url) {
       json(res, 401, { error: 'invalid_credentials' });
       return;
     }
-    const sessionId = sessions.create(username);
+    const sessionId = createSession(username);
     setSessionCookie(res, sessionId);
     json(res, 200, { ok: true, user: { username } });
     return;
@@ -313,7 +330,6 @@ async function api(req, res, url) {
   if (!session) return;
 
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    sessions.destroy(session.id);
     clearSessionCookie(res);
     json(res, 200, { ok: true });
     return;
@@ -371,6 +387,7 @@ async function api(req, res, url) {
       return;
     }
     await store.changePassword(body.newPassword);
+    setSessionCookie(res, createSession(session.value.username));
     json(res, 200, { ok: true });
     return;
   }

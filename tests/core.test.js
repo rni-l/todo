@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createPasswordRecord, verifyPassword } from '../src/auth.js';
+import { createPasswordRecord, createSessionSecret, createSessionToken, verifyPassword, verifySessionToken } from '../src/auth.js';
 import { createZip, parseZip } from '../src/zip.js';
 import { TodoStore } from '../src/storage.js';
 
@@ -11,6 +11,37 @@ test('password records verify the original password only', () => {
   const record = createPasswordRecord('correct horse battery staple');
   assert.equal(verifyPassword('correct horse battery staple', record), true);
   assert.equal(verifyPassword('wrong', record), false);
+});
+
+test('session tokens survive restart when auth record is unchanged', () => {
+  const record = createPasswordRecord('todo123456');
+  const secret = createSessionSecret(record);
+  const token = createSessionToken({
+    username: 'self-hosted-user',
+    expiresAt: Date.now() + 60_000
+  }, secret);
+
+  const verified = verifySessionToken(token, createSessionSecret(record));
+  assert.deepEqual(verified?.username, 'self-hosted-user');
+  assert.ok(verified?.expiresAt > Date.now());
+});
+
+test('session token verification rejects tampering and expiry', () => {
+  const record = createPasswordRecord('todo123456');
+  const secret = createSessionSecret(record, 'manual-secret');
+  const valid = createSessionToken({
+    username: 'self-hosted-user',
+    expiresAt: Date.now() + 60_000
+  }, secret);
+  const [payload, signature] = valid.split('.');
+  const tampered = `${payload}.broken${signature.slice(6)}`;
+  const expired = createSessionToken({
+    username: 'self-hosted-user',
+    expiresAt: Date.now() - 60_000
+  }, secret);
+
+  assert.equal(verifySessionToken(tampered, secret), null);
+  assert.equal(verifySessionToken(expired, secret), null);
 });
 
 test('zip helper round-trips stored attachment files', async () => {

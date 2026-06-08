@@ -6,6 +6,7 @@ const state = {
   data: null,
   route: parseRoute(),
   selectedTaskId: null,
+  loginError: '',
   commandOpen: false,
   taskModalOpen: false,
   projectModalOpen: false,
@@ -228,8 +229,16 @@ async function api(path, options = {}) {
     credentials: 'same-origin'
   });
   if (response.status === 401) {
+    if (path === '/api/auth/login') {
+      let detail = {};
+      try { detail = await response.json(); } catch {}
+      const error = new Error(detail.error || 'invalid_credentials');
+      error.status = response.status;
+      throw error;
+    }
     state.data = null;
-    renderLogin();
+    state.loginError = '请先登录';
+    renderLogin(new Error('unauthorized'));
     throw new Error('unauthorized');
   }
   if (!response.ok) {
@@ -246,6 +255,7 @@ async function api(path, options = {}) {
 
 async function loadData() {
   state.data = await api('/api/data');
+  state.loginError = '';
   if (!state.selectedTaskId) {
     const first = openTasks().find(task => task.dueDate === todayISO()) || openTasks()[0];
     state.selectedTaskId = first?.id || null;
@@ -302,25 +312,40 @@ function render() {
 
 function renderLogin(error) {
   app.className = 'login-screen';
+  const loginError = error?.message === 'invalid_credentials' ? '密码错误，请重新输入。' : state.loginError || (error?.message === 'unauthorized' ? '请先登录' : '');
   app.innerHTML = `
     <form class="login-card" data-submit="login">
       <div class="login-title">
-        <div class="brand-mark">✓</div>
-        <h1>My Tasks</h1>
-        <p>Private task workspace</p>
+        <span class="chip strong">Single User</span>
+        <div class="login-brand">
+          <div class="brand-mark">✓</div>
+          <div>
+            <h1>个人 TODO</h1>
+            <p>单用户、自托管、服务重启后仍保留登录态。</p>
+          </div>
+        </div>
+      </div>
+      <div class="login-points">
+        <div class="login-point"><strong>持续登录</strong><span>浏览器会保留当前登录，重启服务后刷新即可继续使用。</span></div>
+        <div class="login-point"><strong>首次启动</strong><span>默认账号是 <code>self-hosted-user</code>，默认密码是 <code>todo123456</code>。</span></div>
       </div>
       <div class="field">
         <label>账号</label>
-        <input class="input" name="username" value="self-hosted-user" autocomplete="username" />
+        <input class="input" name="username" value="self-hosted-user" autocomplete="username" autocapitalize="off" spellcheck="false" />
       </div>
       <div class="field">
         <label>密码</label>
-        <input class="input" name="password" type="password" autocomplete="current-password" required autofocus />
+        <div class="password-field">
+          <input class="input" name="password" type="password" autocomplete="current-password" required autofocus data-login-password />
+          <button class="quiet-button login-toggle" type="button" data-action="toggle-login-password">显示</button>
+        </div>
       </div>
-      <p class="page-subtitle" style="margin:0;">首次启动默认密码是 <strong>todo123456</strong>。部署时请用 <code>TODO_PASSWORD</code> 环境变量覆盖，或登录后在设置中修改。</p>
-      ${error ? `<p class="chip danger">${escapeHtml(error.message === 'unauthorized' ? '请先登录' : '服务器连接失败')}</p>` : ''}
-      <button class="primary-add" type="submit">登录</button>
-      <a class="quiet-button" href="/prototype/index.html">查看原型设计稿</a>
+      <p class="page-subtitle" style="margin:0;">部署时请用 <code>TODO_PASSWORD</code> 覆盖默认密码，或登录后在设置里修改。当前登录态默认保留 14 天，并会在活跃使用时自动续期。</p>
+      ${loginError ? `<p class="chip danger">${escapeHtml(loginError)}</p>` : ''}
+      <div class="login-actions">
+        <button class="primary-add" type="submit">登录</button>
+        <a class="quiet-button" href="/prototype/index.html">查看原型设计稿</a>
+      </div>
     </form>
   `;
 }
@@ -1053,9 +1078,9 @@ function settingsPanel() {
       <div class="group-header"><div class="group-title"><span class="dot"></span>账号与安全</div><span class="group-meta">${escapeHtml(state.data.user.username)}</span></div>
       <form class="panel" data-submit="change-password" style="border:0;border-radius:0;">
         <div class="field"><label>当前账号</label><input class="input" value="${escapeHtml(state.data.user.username)}" readonly /></div>
-        <div class="field"><label>当前密码</label><input class="input" name="currentPassword" type="password" required /></div>
-        <div class="field"><label>新密码</label><input class="input" name="newPassword" type="password" minlength="8" required /></div>
-        <div class="field"><label>再次输入新密码</label><input class="input" name="confirmPassword" type="password" minlength="8" required /></div>
+        <div class="field"><label>当前密码</label><input class="input" name="currentPassword" type="password" autocomplete="current-password" required /></div>
+        <div class="field"><label>新密码</label><input class="input" name="newPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
+        <div class="field"><label>再次输入新密码</label><input class="input" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
         <div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="submit">保存新密码</button><button class="quiet-button danger-button" type="button" data-action="logout">退出登录</button></div>
       </form>
     </section>
@@ -1373,6 +1398,14 @@ async function handleAction(action, payload, target) {
     if (action === 'open-command') { state.commandOpen = true; return render(); }
     if (action === 'close-command') { state.commandOpen = false; return render(); }
     if (action === 'close-modals') { closeModals(); return render(); }
+    if (action === 'toggle-login-password') {
+      const input = document.querySelector('[data-login-password]');
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      actionTarget.textContent = show ? '隐藏' : '显示';
+      return;
+    }
     if (action === 'open-task-modal') { state.taskModalDefaults = defaultsFromPayload(payload); state.taskModalOpen = true; return render(); }
     if (action === 'open-project-modal') { state.projectModalOpen = true; return render(); }
     if (action === 'open-tag-modal') { state.tagModalOpen = true; return render(); }
@@ -1433,6 +1466,7 @@ async function handleSubmit(action, form) {
   const formData = new FormData(form);
   try {
     if (action === 'login') {
+      state.loginError = '';
       await api('/api/auth/login', {
         method: 'POST',
         body: {
@@ -1528,6 +1562,11 @@ async function handleSubmit(action, form) {
       showToast('密码已更新');
     }
   } catch (error) {
+    if (action === 'login') {
+      state.loginError = error.message === 'invalid_credentials' ? '密码错误，请重新输入。' : '登录失败，请稍后重试。';
+      renderLogin(error);
+      return;
+    }
     showToast(error.message === 'invalid_credentials' ? '密码错误' : error.message || '提交失败');
   }
 }
@@ -1867,6 +1906,7 @@ async function installPwa() {
 async function logout() {
   await api('/api/auth/logout', { method: 'POST' });
   state.data = null;
+  state.loginError = '';
   renderLogin();
 }
 
