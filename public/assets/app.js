@@ -1,3 +1,5 @@
+import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView } from './task-date.js';
+
 const app = document.querySelector('#app');
 const state = {
   data: null,
@@ -25,7 +27,7 @@ const navItems = [
   { id: 'upcoming', label: '即将到来', icon: '◷' },
   { id: 'recent', label: '最近7天', icon: '↺', mobile: true, mobileLabel: '近7天' },
   { id: 'calendar', label: '日历', icon: '▦', mobile: true },
-  { id: 'matrix', label: '四象限', icon: '⊞' },
+  { id: 'matrix', label: '四象限', icon: '⊞', mobile: true },
   { id: 'projects', label: '项目', icon: '●', mobile: true },
   { id: 'tags', label: '标签', icon: '#'},
   { id: 'filters', label: '智能过滤器', icon: '⚑'},
@@ -83,6 +85,8 @@ document.addEventListener('keydown', event => {
 });
 
 document.addEventListener('click', event => {
+  const formTagPicker = event.target.closest('[data-tag-picker="form"]');
+  if (formTagPicker) requestAnimationFrame(() => syncTagPickerState(formTagPicker));
   const actionTarget = event.target.closest('[data-action]');
   if (!actionTarget) return;
   const action = actionTarget.dataset.action;
@@ -114,6 +118,18 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.matches('[data-task-date-input]')) {
+    setTaskDate(target.dataset.taskId, target.value, target);
+  }
+  if (target.matches('[data-task-reminder-time]')) {
+    setTaskReminder(target.dataset.taskId, target.value);
+  }
+  if (target.matches('[data-form-date-input]')) {
+    setFormDate(target.closest('form'), target.value);
+  }
+  if (target.matches('[data-form-reminder-time]')) {
+    setFormReminder(target.closest('form'), target.value);
+  }
   if (target.matches('[data-subtask-title]')) {
     updateSubtaskTitle(target.dataset.taskId, target.dataset.subtaskId, target.value);
   }
@@ -126,6 +142,10 @@ document.addEventListener('change', event => {
   }
   if (target.matches('[data-setting-select]')) {
     updateSettings({ [target.dataset.settingSelect]: target.value });
+  }
+  const formTagPicker = target.closest('[data-tag-picker="form"]');
+  if (formTagPicker && target.matches('input[name="tags"]')) {
+    syncTagPickerState(formTagPicker);
   }
   if (target.matches('[data-file-upload]')) {
     uploadAttachment(target.dataset.taskId, target.files);
@@ -461,14 +481,13 @@ function quickAdd(placeholder, context = {}) {
   return `
     <form class="quick-add" data-submit="quick-task">
       <input name="title" autocomplete="off" placeholder="${escapeHtml(placeholder)}" />
-      <input type="hidden" name="dueDate" value="${context.dueDate || ''}" />
       <input type="hidden" name="projectId" value="${context.projectId || ''}" />
       <input type="hidden" name="sectionId" value="${context.sectionId || ''}" />
       <input type="hidden" name="tagId" value="${context.tagId || ''}" />
       <span class="chip">${contextLabel(context)}</span>
-      <button class="chip" type="button" data-action="open-date-menu">日期</button>
       <button class="chip" type="button" data-action="open-project-menu">项目</button>
       <button class="soft-button mobile-visible" type="submit">添加</button>
+      ${schedulePicker({ mode: 'form', defaults: { dueDate: context.dueDate || '', reminderAt: context.reminderAt || '' }, compact: true })}
     </form>
   `;
 }
@@ -499,6 +518,7 @@ function taskRow(task) {
   const project = projectById(task.projectId);
   const tags = task.tags.map(tagById).filter(Boolean);
   const attachmentCount = task.attachments?.length || 0;
+  const dateStatus = getTaskDateStatus(task, todayISO());
   return `
     <button class="task-row ${task.completed ? 'done' : ''} ${task.id === state.selectedTaskId ? 'selected' : ''}" type="button" draggable="true" data-task-id="${task.id}" data-action="select-task">
       <span class="check" data-action="toggle-task" data-id="${task.id}">✓</span>
@@ -506,7 +526,7 @@ function taskRow(task) {
       <span>
         <span class="task-title">${escapeHtml(task.title)}</span>
         <span class="task-meta">
-          ${task.dueDate ? `<span class="mini-tag">${escapeHtml(shortDate(task.dueDate))}</span>` : ''}
+          ${taskDateTag(task, dateStatus)}
           ${task.reminderAt ? `<span class="mini-tag">${escapeHtml(formatTime(task.reminderAt))}</span>` : ''}
           ${task.urgent ? '<span class="mini-tag urgent">紧急</span>' : ''}
           ${project ? `<span class="mini-tag">${escapeHtml(project.name)}</span>` : '<span class="mini-tag">收件箱</span>'}
@@ -524,26 +544,112 @@ function taskRow(task) {
   `;
 }
 
-function selectControl(attrs, optionsHtml) {
-  return `<span class="select-wrap"><select class="select" ${attrs}>${optionsHtml}</select></span>`;
+function taskDateTag(task, status = getTaskDateStatus(task, todayISO())) {
+  return `<span class="mini-tag task-date-tag ${status.tone}">${escapeHtml(taskDateLabel(task, status))}</span>`;
+}
+
+function taskDateLabel(task, status = getTaskDateStatus(task, todayISO())) {
+  if (status.key === 'overdue') return `已过期 · ${shortDate(status.dueDate)}`;
+  if (status.key === 'today') return '今天';
+  if (status.key === 'future') return shortDate(status.dueDate);
+  return '无日期';
+}
+
+function selectControl(attrs, optionsHtml, options = {}) {
+  const classes = ['select-wrap', options.compact ? 'compact' : '', options.invalid ? 'invalid' : ''].filter(Boolean).join(' ');
+  return `<span class="${classes}"><select class="select" ${attrs}>${optionsHtml}</select></span>${options.helper ? formHint(options.helper) : ''}`;
+}
+
+function formHint(text, tone = '') {
+  return `<p class="form-hint ${tone ? `is-${tone}` : ''}">${escapeHtml(text)}</p>`;
 }
 
 function tagPicker(selectedIds = [], { mode = 'form', taskId = '' } = {}) {
   const selected = new Set(selectedIds);
   if (!state.data.tags.length) {
-    return '<p class="page-subtitle" style="margin:0;">还没有标签。</p>';
+    return '<div class="empty-note compact">还没有标签。可以先在标签页创建。</div>';
   }
+  const selectedCount = state.data.tags.filter(tag => selected.has(tag.id)).length;
   return `
-    <div class="tag-picker" data-tag-picker="${mode}">
-      ${state.data.tags.map(tag => {
-        const active = selected.has(tag.id);
-        if (mode === 'drawer') {
-          return `<button class="tag-choice ${active ? 'active' : ''}" type="button" data-action="toggle-task-tag" data-task-id="${taskId}" data-tag-id="${tag.id}"><span class="project-dot ${tag.color || ''}"></span>#${escapeHtml(tag.name)}</button>`;
-        }
-        return `<label class="tag-choice ${active ? 'active' : ''}"><input type="checkbox" name="tags" value="${tag.id}" ${active ? 'checked' : ''} /><span class="project-dot ${tag.color || ''}"></span>#${escapeHtml(tag.name)}</label>`;
-      }).join('')}
+    <div class="tag-picker-shell" data-tag-picker="${mode}">
+      <div class="tag-picker">
+        ${state.data.tags.map(tag => {
+          const active = selected.has(tag.id);
+          const name = escapeHtml(tag.name);
+          if (mode === 'drawer') {
+            return `<button class="tag-choice ${active ? 'active' : ''}" type="button" data-action="toggle-task-tag" data-task-id="${taskId}" data-tag-id="${tag.id}" aria-pressed="${active ? 'true' : 'false'}"><span class="project-dot ${tag.color || ''}"></span><span class="tag-name">#${name}</span></button>`;
+          }
+          return `<label class="tag-choice ${active ? 'active' : ''}"><input type="checkbox" name="tags" value="${tag.id}" ${active ? 'checked' : ''} /><span class="project-dot ${tag.color || ''}"></span><span class="tag-name">#${name}</span></label>`;
+        }).join('')}
+      </div>
+      <p class="form-hint">${selectedCount ? `已选 ${selectedCount} 个标签` : '未选择标签'}</p>
     </div>
   `;
+}
+
+function schedulePicker({ mode = 'form', task = null, defaults = {}, compact = false } = {}) {
+  const isTask = mode === 'task';
+  const dueDate = isTask ? task?.dueDate || '' : defaults.dueDate || '';
+  const reminderAt = isTask ? task?.reminderAt || '' : defaults.reminderAt || '';
+  const taskId = task?.id || '';
+  const selectedTime = localTimeValue(reminderAt);
+  const reminderDate = localDateValue(reminderAt);
+  const dateInputAttrs = isTask
+    ? `data-task-date-input data-task-id="${taskId}"`
+    : 'data-form-date-input';
+  const timeInputAttrs = isTask
+    ? `data-task-reminder-time data-task-id="${taskId}"`
+    : 'data-form-reminder-time';
+  const dateAction = isTask ? 'set-task-date' : 'set-form-date';
+  const reminderAction = isTask ? 'set-task-reminder' : 'set-form-reminder';
+  const taskIdAttr = isTask ? ` data-task-id="${taskId}"` : '';
+  const hiddenInputs = isTask ? '' : `
+    <input type="hidden" name="dueDate" value="${escapeHtml(dueDate)}" data-form-due-date />
+    <input type="hidden" name="reminderAt" value="${escapeHtml(reminderAt)}" data-form-reminder-at />
+  `;
+
+  return `
+    <div class="schedule-picker ${compact ? 'compact' : ''}" data-schedule-picker>
+      ${hiddenInputs}
+      <div class="schedule-summary" data-schedule-summary>
+        <span>
+          <strong>${escapeHtml(dueDate ? shortDate(dueDate) : '无日期')}</strong>
+          <small>${escapeHtml(reminderAt ? `${formatTime(reminderAt)} 提醒` : '无提醒')}</small>
+        </span>
+      </div>
+      <div class="schedule-row">
+        <span class="schedule-label">日期</span>
+        <div class="schedule-options">
+          ${dateShortcutOptions().map(option => `
+            <button class="schedule-option ${dueDate === option.value ? 'active' : ''}" type="button" data-action="${dateAction}" data-value="${option.value}"${taskIdAttr}>${escapeHtml(option.label)}</button>
+          `).join('')}
+          <input class="input schedule-custom-input" type="text" value="${escapeHtml(dateInputDisplayValue(dueDate))}" placeholder="24 / 6/24 / 2026-06-24" aria-label="自定义日期" ${dateInputAttrs} />
+        </div>
+      </div>
+      <div class="schedule-row">
+        <span class="schedule-label">提醒</span>
+        <div class="schedule-options">
+          ${reminderTimeOptions().map(option => {
+            const active = option.value ? selectedTime === option.value && (!dueDate || reminderDate === dueDate) : !reminderAt;
+            return `<button class="schedule-option ${active ? 'active' : ''}" type="button" data-action="${reminderAction}" data-time="${option.value}"${taskIdAttr}>${escapeHtml(option.label)}</button>`;
+          }).join('')}
+          <input class="input schedule-custom-input time" type="time" value="${escapeHtml(selectedTime)}" aria-label="自定义提醒时间" ${timeInputAttrs} />
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function syncTagPickerState(shell) {
+  if (!shell) return;
+  const choices = [...shell.querySelectorAll('.tag-choice')];
+  const selectedCount = choices.reduce((count, choice) => {
+    const checked = Boolean(choice.querySelector('input[name="tags"]')?.checked);
+    choice.classList.toggle('active', checked);
+    return checked ? count + 1 : count;
+  }, 0);
+  const hint = shell.querySelector('.form-hint');
+  if (hint) hint.textContent = selectedCount ? `已选 ${selectedCount} 个标签` : '未选择标签';
 }
 
 function emptyCompact(text) {
@@ -576,25 +682,28 @@ function upcomingPage() {
 }
 
 function recentPage() {
-  const tasks = recentTasks();
-  const days = Array.from({ length: 7 }, (_, index) => todayISO(-index));
+  const today = todayISO();
+  const tasks = recentTasks(today);
+  const recentDays = getRecentWindowDays(today);
+  const groups = [
+    taskGroup('已过期', tasks.filter(task => getTaskDateStatus(task, today).key === 'overdue'), 'danger'),
+    taskGroup('今天', tasks.filter(task => task.dueDate === today), 'success'),
+    ...recentDays.slice(1).map(day => taskGroup(shortDate(day), tasks.filter(task => task.dueDate === day), 'accent'))
+  ].filter(group => group.tasks.length);
+
   return listPage({
     eyebrow: 'RECENT · 最近7天',
     title: '最近7天',
-    subtitle: '回看过去七天到今天的到期和完成任务。',
+    subtitle: '显示所有逾期任务，以及今天起未来七天内的待办任务。',
     stats: [
-      { value: tasks.length, label: '最近任务' },
-      { value: tasks.filter(task => !task.completed).length, label: '未完成' },
-      { value: tasks.filter(task => task.completed).length, label: '已完成' },
-      { value: tasks.filter(task => task.urgent).length, label: '紧急' }
+      { value: tasks.length, label: '窗口任务' },
+      { value: tasks.filter(task => getTaskDateStatus(task, today).key === 'overdue').length, label: '已逾期' },
+      { value: tasks.filter(task => task.dueDate === today).length, label: '今天' },
+      { value: tasks.filter(task => task.dueDate && task.dueDate > today).length, label: '未来' }
     ],
     placeholder: '添加一个今天要处理的任务',
-    quickContext: { dueDate: todayISO() },
-    groups: days.map(day => taskGroup(
-      day === todayISO() ? '今天' : shortDate(day),
-      tasks.filter(task => taskRecentDate(task) === day),
-      day === todayISO() ? 'success' : ''
-    ))
+    quickContext: { dueDate: today },
+    groups
   });
 }
 
@@ -1056,28 +1165,17 @@ function drawer(task) {
           <label class="property"><span class="property-label">完成</span><span class="property-value"><input type="checkbox" ${task.completed ? 'checked' : ''} data-action="toggle-task" data-id="${task.id}" /> ${task.completed ? '已完成' : '未完成'}</span></label>
           <label class="property"><span class="property-label">项目</span><span class="property-value">${selectControl('data-drawer-select="projectId"', `<option value="">收件箱</option>${state.data.projects.map(item => `<option value="${item.id}" ${item.id === task.projectId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}`)}</span></label>
           <label class="property"><span class="property-label">章节</span><span class="property-value">${selectControl('data-drawer-select="sectionId"', `<option value="">无章节</option>${(project?.sections || []).map(section => `<option value="${section.id}" ${section.id === task.sectionId ? 'selected' : ''}>${escapeHtml(section.name)}</option>`).join('')}`)}</span></label>
-          <label class="property"><span class="property-label">日期</span><span class="property-value"><input class="input" type="date" value="${task.dueDate || ''}" data-drawer-select="dueDate" /></span></label>
-          <label class="property"><span class="property-label">提醒</span><span class="property-value"><input class="input" type="datetime-local" value="${localDatetime(task.reminderAt)}" data-drawer-select="reminderAt" /></span></label>
+          <div class="property schedule-property"><span class="property-label">日期提醒</span><span class="property-value">${schedulePicker({ mode: 'task', task })}</span></div>
           <label class="property"><span class="property-label">优先级</span><span class="property-value">${selectControl('data-drawer-select="priority"', `${['none','low','medium','high'].map(priority => `<option value="${priority}" ${priority === task.priority ? 'selected' : ''}>${priorityLabel(priority)}</option>`).join('')}`)}</span></label>
           <div class="property"><span class="property-label">紧急</span><span class="property-value"><button class="switch ${task.urgent ? 'on' : ''}" type="button" data-action="toggle-urgent" data-id="${task.id}" aria-label="${task.urgent ? '取消紧急' : '标记紧急'}"></button>${task.urgent ? '紧急' : '不紧急'}</span></div>
           <div class="property tag-property"><span class="property-label">标签</span><span class="property-value">${tagPicker(task.tags || [], { mode: 'drawer', taskId: task.id })}</span></div>
           <label class="property"><span class="property-label">重复</span><span class="property-value">${selectControl('data-drawer-select="recurrence"', `<option value="">不重复</option><option value='{"type":"daily","interval":1}' ${task.recurrence?.type === 'daily' ? 'selected' : ''}>每天</option><option value='{"type":"weekly","interval":1}' ${task.recurrence?.type === 'weekly' ? 'selected' : ''}>每周</option><option value='{"type":"monthly","interval":1}' ${task.recurrence?.type === 'monthly' ? 'selected' : ''}>每月</option><option value='{"type":"workdays","interval":1}' ${task.recurrence?.type === 'workdays' ? 'selected' : ''}>工作日</option>`)}</span></label>
         </div>
         <section class="panel">
-          <div class="panel-title">Markdown 描述 <button class="tiny-action" type="button" data-action="toggle-preview">预览已同步</button></div>
+          <div class="panel-title">描述</div>
           <textarea class="textarea" data-drawer-field="description" placeholder="写一些任务上下文。">${escapeHtml(task.description || '')}</textarea>
-          <div class="markdown-preview">${markdown(task.description || '')}</div>
         </section>
-        <section class="panel">
-          <div class="panel-title">Checklist <button class="tiny-action" type="button" data-action="add-subtask" data-id="${task.id}">添加</button></div>
-          ${(task.subtasks || []).map(subtask => `
-            <div class="subtask">
-              <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-action="toggle-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
-              <textarea class="subtask-title" rows="1" data-autosize data-subtask-title data-task-id="${task.id}" data-subtask-id="${subtask.id}">${escapeHtml(subtask.title)}</textarea>
-              <button class="tiny-action" type="button" data-action="delete-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}">删除</button>
-            </div>
-          `).join('') || '<p class="page-subtitle" style="margin:0;">还没有子任务。</p>'}
-        </section>
+        ${checklistPanel(task)}
         <section class="panel">
           <div class="panel-title">附件 <span class="chip">${(task.attachments || []).length} 个</span></div>
           <label class="upload-dropzone">
@@ -1108,7 +1206,7 @@ function taskModal() {
     <form class="dialog-body" data-submit="create-task">
       <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" /></div>
       <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${state.data.projects.map(project => `<option value="${project.id}" ${project.id === defaults.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('')}`)}</div>
-      <div class="field"><label>日期</label><input class="input" name="dueDate" type="date" value="${escapeHtml(defaults.dueDate || '')}" /></div>
+      <div class="field"><label>日期和提醒</label>${schedulePicker({ mode: 'form', defaults })}</div>
       <div class="field"><label>优先级</label>${selectControl('name="priority"', '<option value="none">普通</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option>')}</div>
       <div class="field"><label>标签</label>${tagPicker(defaults.tagId ? [defaults.tagId] : [], { mode: 'form' })}</div>
       <label class="check-field"><input type="checkbox" name="urgent" value="true" /><span>标记为紧急</span></label>
@@ -1117,6 +1215,33 @@ function taskModal() {
       <button class="primary-add" type="submit">创建任务</button>
     </form>
   `);
+}
+
+function checklistPanel(task) {
+  const subtasks = task.subtasks || [];
+  const doneCount = subtasks.filter(subtask => subtask.completed).length;
+  return `
+    <section class="panel checklist-panel">
+      <div class="panel-title">
+        <span>Checklist</span>
+        <span class="chip">${doneCount}/${subtasks.length}</span>
+      </div>
+      <form class="subtask-composer" data-submit="add-subtask">
+        <textarea class="input subtask-input" name="title" rows="2" data-autosize placeholder="添加检查项，支持粘贴多行内容"></textarea>
+        <input type="hidden" name="taskId" value="${task.id}" />
+        <button class="tiny-action" type="submit">添加</button>
+      </form>
+      <div class="subtask-list">
+        ${subtasks.map(subtask => `
+          <div class="subtask ${subtask.completed ? 'done' : ''}">
+            <input type="checkbox" aria-label="切换检查项完成状态" ${subtask.completed ? 'checked' : ''} data-action="toggle-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}" />
+            <textarea class="subtask-title" rows="1" data-autosize data-subtask-title data-task-id="${task.id}" data-subtask-id="${subtask.id}">${escapeHtml(subtask.title)}</textarea>
+            <button class="tiny-action" type="button" data-action="delete-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}" aria-label="删除检查项">删除</button>
+          </div>
+        `).join('') || '<div class="empty-note">还没有检查项。先添加一条能推进任务的下一步。</div>'}
+      </div>
+    </section>
+  `;
 }
 
 function projectModal() {
@@ -1231,6 +1356,10 @@ async function handleAction(action, payload, target) {
     if (action === 'toggle-subtask') return toggleSubtask(payload.taskId, payload.subtaskId);
     if (action === 'delete-subtask') return deleteSubtask(payload.taskId, payload.subtaskId);
     if (action === 'toggle-task-tag') return toggleTaskTag(payload.taskId, payload.tagId);
+    if (action === 'set-task-date') return setTaskDate(payload.taskId, payload.value || '');
+    if (action === 'set-task-reminder') return setTaskReminder(payload.taskId, payload.time || '');
+    if (action === 'set-form-date') { setFormDate(target.closest('form'), payload.value || ''); return; }
+    if (action === 'set-form-reminder') { setFormReminder(target.closest('form'), payload.time || ''); return; }
     if (action === 'calendar-mode') { state.calendarMode = payload.mode; return render(); }
     if (action === 'calendar-today') { showToast('已回到今天'); return; }
     if (action === 'filter-date') { showToast(`已聚焦 ${payload.date}`); return; }
@@ -1281,6 +1410,7 @@ async function handleSubmit(action, form) {
         projectId: formData.get('projectId') || null,
         sectionId: formData.get('sectionId') || null,
         dueDate: formData.get('dueDate') || null,
+        reminderAt: normalizeReminderInput(formData.get('reminderAt')) || null,
         priority: formData.get('priority') || 'none',
         urgent: formData.get('urgent') === 'true',
         tags: [...new Set([...selectedTags, ...(tagId ? [tagId] : [])])]
@@ -1290,6 +1420,12 @@ async function handleSubmit(action, form) {
       closeModals();
       await refreshFromPayload(response);
       showToast('任务已添加');
+      return;
+    }
+    if (action === 'add-subtask') {
+      await addSubtask(formData.get('taskId'), formData.get('title'));
+      form.reset();
+      autosizeTextareas();
       return;
     }
     if (action === 'create-project') {
@@ -1371,8 +1507,6 @@ function updateSelectedTaskDraft(field, value) {
       render();
     }
   }, 650);
-  const preview = document.querySelector('.markdown-preview');
-  if (field === 'description' && preview) preview.innerHTML = markdown(value);
   const save = document.querySelector('.save-state');
   if (save) save.textContent = state.saveState;
 }
@@ -1415,10 +1549,119 @@ async function toggleTaskTag(taskId, tagId) {
   await updateTask(taskId, { tags: [...current] });
 }
 
-async function addSubtask(id) {
+async function setTaskDate(taskId, value, input = null) {
+  const task = taskById(taskId);
+  if (!task) return;
+  const parsedDate = parseDateInput(value, task.dueDate || todayISO());
+  if (parsedDate === null) {
+    input?.classList.add('invalid');
+    showToast('日期格式可写 24、6/24 或 2026-06-24');
+    return;
+  }
+  input?.classList.remove('invalid');
+  const dueDate = parsedDate || null;
+  const patch = { dueDate };
+  if (!dueDate) {
+    patch.reminderAt = null;
+  } else if (task.reminderAt) {
+    const time = localTimeValue(task.reminderAt);
+    if (time) patch.reminderAt = dateTimeLocalValue(dueDate, time);
+  }
+  await updateTask(taskId, patch);
+}
+
+async function setTaskReminder(taskId, time) {
+  const task = taskById(taskId);
+  if (!task) return;
+  if (!time) {
+    await updateTask(taskId, { reminderAt: null });
+    return;
+  }
+  const dueDate = task.dueDate || todayISO();
+  const patch = { reminderAt: dateTimeLocalValue(dueDate, time) };
+  if (!task.dueDate) patch.dueDate = dueDate;
+  await updateTask(taskId, patch);
+}
+
+function setFormDate(form, value) {
+  if (!form) return;
+  const dueDateInput = form.querySelector('[data-form-due-date]');
+  const reminderInput = form.querySelector('[data-form-reminder-at]');
+  if (!dueDateInput || !reminderInput) return;
+  const customDateInput = form.querySelector('[data-form-date-input]');
+  const parsedDate = parseDateInput(value, dueDateInput.value || todayISO());
+  if (parsedDate === null) {
+    customDateInput?.classList.add('invalid');
+    showToast('日期格式可写 24、6/24 或 2026-06-24');
+    return;
+  }
+  const dueDate = parsedDate || '';
+  const currentTime = localTimeValue(reminderInput.value);
+  dueDateInput.value = dueDate;
+  if (customDateInput) {
+    customDateInput.value = dateInputDisplayValue(dueDate);
+    customDateInput.classList.remove('invalid');
+  }
+  if (!dueDate) {
+    reminderInput.value = '';
+  } else if (currentTime) {
+    reminderInput.value = reminderISO(dueDate, currentTime);
+  }
+  syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
+}
+
+function setFormReminder(form, time) {
+  if (!form) return;
+  const dueDateInput = form.querySelector('[data-form-due-date]');
+  const reminderInput = form.querySelector('[data-form-reminder-at]');
+  if (!dueDateInput || !reminderInput) return;
+  const reminderTime = time || '';
+  if (!reminderTime) {
+    reminderInput.value = '';
+  } else {
+    const dueDate = dueDateInput.value || todayISO();
+    dueDateInput.value = dueDate;
+    reminderInput.value = reminderISO(dueDate, reminderTime);
+    const customDateInput = form.querySelector('[data-form-date-input]');
+    if (customDateInput) {
+      customDateInput.value = dateInputDisplayValue(dueDate);
+      customDateInput.classList.remove('invalid');
+    }
+  }
+  const customTimeInput = form.querySelector('[data-form-reminder-time]');
+  if (customTimeInput) customTimeInput.value = reminderTime;
+  syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
+}
+
+function syncSchedulePicker(picker) {
+  if (!picker) return;
+  const dueDate = picker.querySelector('[data-form-due-date]')?.value || '';
+  const reminderAt = picker.querySelector('[data-form-reminder-at]')?.value || '';
+  const selectedTime = localTimeValue(reminderAt);
+  const reminderDate = localDateValue(reminderAt);
+  const summary = picker.querySelector('[data-schedule-summary]');
+  if (summary) {
+    const title = summary.querySelector('strong');
+    const subtitle = summary.querySelector('small');
+    if (title) title.textContent = dueDate ? shortDate(dueDate) : '无日期';
+    if (subtitle) subtitle.textContent = reminderAt ? `${formatTime(reminderAt)} 提醒` : '无提醒';
+  }
+  picker.querySelectorAll('[data-action="set-form-date"]').forEach(button => {
+    button.classList.toggle('active', (button.dataset.value || '') === dueDate);
+  });
+  picker.querySelectorAll('[data-action="set-form-reminder"]').forEach(button => {
+    const value = button.dataset.time || '';
+    const active = value ? selectedTime === value && (!dueDate || reminderDate === dueDate) : !reminderAt;
+    button.classList.toggle('active', active);
+  });
+  const customDateInput = picker.querySelector('[data-form-date-input]');
+  if (customDateInput) customDateInput.value = dateInputDisplayValue(dueDate);
+}
+
+async function addSubtask(id, inputTitle) {
   const task = taskById(id);
   if (!task) return;
-  const title = prompt('子任务标题，可以粘贴多行内容');
+  const title = inputTitle === undefined ? prompt('子任务标题，可以粘贴多行内容') : String(inputTitle || '').trim();
   if (!title) return;
   const subtasks = [...(task.subtasks || []), { title, completed: false, order: (task.subtasks || []).length + 1 }];
   await updateTask(id, { subtasks });
@@ -1678,19 +1921,8 @@ function sortTasks(tasks) {
   });
 }
 
-function isWithinRecentWindow(value) {
-  return Boolean(value && value >= todayISO(-6) && value <= todayISO());
-}
-
-function taskRecentDate(task) {
-  if (isWithinRecentWindow(task.dueDate)) return task.dueDate;
-  const completedDate = task.completedAt?.slice(0, 10);
-  if (isWithinRecentWindow(completedDate)) return completedDate;
-  return null;
-}
-
-function recentTasks() {
-  return state.data.tasks.filter(task => taskRecentDate(task));
+function recentTasks(today = todayISO()) {
+  return state.data.tasks.filter(task => shouldShowInRecentView(task, today));
 }
 
 function isUrgentTask(task) {
@@ -1929,31 +2161,87 @@ function applyTheme(theme) {
   else root.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function markdown(source) {
-  const escaped = escapeHtml(source || '');
-  const blocks = escaped.split(/\n{2,}/).map(block => {
-    if (/^```/.test(block)) return `<pre><code>${block.replace(/^```[a-z]*\n?|```$/g, '')}</code></pre>`;
-    if (/^### /.test(block)) return `<h3>${block.replace(/^### /, '')}</h3>`;
-    if (/^## /.test(block)) return `<h2>${block.replace(/^## /, '')}</h2>`;
-    if (/^# /.test(block)) return `<h1>${block.replace(/^# /, '')}</h1>`;
-    if (/^&gt; /.test(block)) return `<blockquote>${block.replace(/^&gt; /gm, '')}</blockquote>`;
-    if (/^- /m.test(block)) return `<ul>${block.split('\n').map(line => line.replace(/^- /, '')).filter(Boolean).map(line => `<li>${inlineMarkdown(line)}</li>`).join('')}</ul>`;
-    return `<p>${inlineMarkdown(block).replace(/\n/g, '<br>')}</p>`;
-  });
-  return blocks.join('');
+function dateShortcutOptions() {
+  return [
+    { label: '无日期', value: '' },
+    { label: '今天', value: todayISO() },
+    { label: '明天', value: todayISO(1) },
+    { label: '本周末', value: nextWeekdayISO(6) },
+    { label: '下周一', value: nextWeekdayISO(1) }
+  ];
 }
 
-function inlineMarkdown(value) {
-  return value
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+function reminderTimeOptions() {
+  const defaultTime = state.data?.settings?.defaultReminderTime || '';
+  const values = [...new Set([defaultTime, '09:00', '12:00', '18:00', '21:00'].filter(Boolean))];
+  return [
+    { label: '无提醒', value: '' },
+    ...values.map(value => ({ label: value === defaultTime ? `默认 ${value}` : value, value }))
+  ];
 }
 
 function todayISO(offset = 0) {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
   date.setDate(date.getDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextWeekdayISO(targetDay) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  const currentDay = date.getDay();
+  let offset = (targetDay - currentDay + 7) % 7;
+  if (offset === 0) offset = 7;
+  date.setDate(date.getDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function dateInputDisplayValue(value) {
+  return value ? value.replace(/-/g, '/') : '';
+}
+
+function parseDateInput(value, baseValue = todayISO()) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const normalized = raw
+    .replace(/[年月.]/g, '/')
+    .replace(/日/g, '')
+    .replace(/-/g, '/')
+    .replace(/\s+/g, '');
+  const base = new Date(`${baseValue || todayISO()}T12:00:00`);
+  let year = base.getFullYear();
+  let month = base.getMonth() + 1;
+  let day = null;
+
+  if (/^\d{1,2}$/.test(normalized)) {
+    day = Number(normalized);
+  } else if (/^\d{1,2}\/\d{1,2}$/.test(normalized)) {
+    const parts = normalized.split('/').map(Number);
+    month = parts[0];
+    day = parts[1];
+  } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(normalized)) {
+    const parts = normalized.split('/').map(Number);
+    year = parts[0];
+    month = parts[1];
+    day = parts[2];
+  } else if (/^\d{8}$/.test(normalized)) {
+    year = Number(normalized.slice(0, 4));
+    month = Number(normalized.slice(4, 6));
+    day = Number(normalized.slice(6, 8));
+  } else {
+    return null;
+  }
+
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() + 1 !== month ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
   return date.toISOString().slice(0, 10);
 }
 
@@ -2001,6 +2289,29 @@ function localDatetime(value) {
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function localDateValue(value) {
+  return localDatetime(value).slice(0, 10);
+}
+
+function localTimeValue(value) {
+  return localDatetime(value).slice(11, 16);
+}
+
+function dateTimeLocalValue(date, time) {
+  return date && time ? `${date}T${time}` : '';
+}
+
+function reminderISO(date, time) {
+  const value = dateTimeLocalValue(date, time);
+  return value ? new Date(value).toISOString() : '';
+}
+
+function normalizeReminderInput(value) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  return raw.length === 16 ? new Date(raw).toISOString() : raw;
 }
 
 function relativeDate(value) {

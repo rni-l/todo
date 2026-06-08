@@ -1,9 +1,10 @@
-const CACHE_NAME = 'personal-todo-v1';
+const CACHE_NAME = 'personal-todo-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/assets/app.css',
   '/assets/app.js',
+  '/assets/task-date.js',
   '/assets/icon.svg',
   '/manifest.webmanifest'
 ];
@@ -24,12 +25,12 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) return;
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+    fetch(event.request).then(response => {
       if (event.request.method === 'GET' && response.ok) {
         const copy = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
       }
       return response;
-    }))
+    }).catch(() => caches.match(event.request))
   );
 });

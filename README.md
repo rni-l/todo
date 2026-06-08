@@ -71,3 +71,8 @@ npm run pm2:stop
 ```bash
 npm test
 ```
+
+```
+pgrep -af myself-todo
+lsof :i 38887
+```
