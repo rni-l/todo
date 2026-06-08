@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSessionSecret, createSessionToken, verifySessionToken } from './src/auth.js';
+import { createSessionSecret, createSessionToken, validateNewPassword, verifySessionToken } from './src/auth.js';
 import { TodoStore } from './src/storage.js';
 import { createZip, parseZip } from './src/zip.js';
 
@@ -382,8 +382,11 @@ async function api(req, res, url) {
       json(res, 400, { error: 'current_password_incorrect' });
       return;
     }
-    if (String(body.newPassword || '').length < 8) {
-      json(res, 400, { error: 'password_too_short' });
+    const passwordError = validateNewPassword(body.newPassword, {
+      currentPassword: body.currentPassword || ''
+    });
+    if (passwordError) {
+      json(res, 400, { error: passwordError });
       return;
     }
     await store.changePassword(body.newPassword);

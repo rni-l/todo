@@ -248,6 +248,15 @@ svg { display: block; }
 
 .nav-item:hover { background: var(--fg-soft); color: var(--fg); }
 .nav-item.active { background: var(--accent-soft); color: var(--fg); }
+.nav-item.nav-toggle {
+  font-weight: 650;
+}
+.nav-empty {
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 .nav-count {
   min-width: 23px;
@@ -1162,7 +1171,26 @@ svg { display: block; }
 .calendar-day.drag-over, .day-column.drag-over { outline: 3px solid var(--accent-soft); }
 
 .project-grid, .settings-grid, .tag-grid, .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.project-section {
+  margin-top: 22px;
+  display: grid;
+  gap: 14px;
+}
+.project-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+.project-section-head h2 {
+  font-size: 26px;
+  line-height: 1.08;
+}
 .project-card, .settings-card, .tag-card, .filter-card { padding: 16px; display: grid; gap: 14px; }
+.project-card.is-archived {
+  background: color-mix(in oklch, var(--surface) 70%, transparent);
+  border-style: dashed;
+}
 .project-card header, .settings-card header, .tag-card header, .filter-card header {
   display: flex;
   align-items: center;

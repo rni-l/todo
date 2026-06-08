@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createPasswordRecord, createSessionSecret, createSessionToken, verifyPassword, verifySessionToken } from '../src/auth.js';
+import {
+  createPasswordRecord,
+  createSessionSecret,
+  createSessionToken,
+  validateNewPassword,
+  verifyPassword,
+  verifySessionToken
+} from '../src/auth.js';
 import { createZip, parseZip } from '../src/zip.js';
 import { TodoStore } from '../src/storage.js';
 
@@ -11,6 +18,15 @@ test('password records verify the original password only', () => {
   const record = createPasswordRecord('correct horse battery staple');
   assert.equal(verifyPassword('correct horse battery staple', record), true);
   assert.equal(verifyPassword('wrong', record), false);
+});
+
+test('new password validation enforces shared password rules', () => {
+  assert.equal(validateNewPassword('a1'), 'password_too_short');
+  assert.equal(validateNewPassword('a'.repeat(129)), 'password_too_long');
+  assert.equal(validateNewPassword('123'), 'password_missing_letter');
+  assert.equal(validateNewPassword('abc'), 'password_missing_number');
+  assert.equal(validateNewPassword('todo123456', { currentPassword: 'todo123456' }), 'password_same_as_current');
+  assert.equal(validateNewPassword('a1b'), null);
 });
 
 test('session tokens survive restart when auth record is unchanged', () => {
@@ -182,4 +198,44 @@ test('filter update preserves pinned state when omitted', async () => {
   assert.equal(updated.name, 'Edited pinned filter');
   assert.equal(updated.pinned, true);
   assert.deepEqual(updated.conditions, [{ field: 'due', operator: 'is', value: 'today' }]);
+});
+
+test('project updates preserve existing sections when sections are omitted', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const project = await store.createProject({
+    name: 'Editable project',
+    color: 'blue',
+    sections: [{ name: '默认', order: 1 }, { name: '复盘', order: 2 }]
+  });
+
+  const updated = await store.updateProject(project.id, {
+    name: 'Edited project',
+    description: 'Updated description',
+    color: 'green'
+  });
+
+  assert.equal(updated.name, 'Edited project');
+  assert.equal(updated.description, 'Updated description');
+  assert.equal(updated.color, 'green');
+  assert.equal(updated.sections.length, 2);
+  assert.equal(updated.sections[0].name, '默认');
+  assert.equal(updated.sections[1].name, '复盘');
+});
+
+test('project archive flag can be toggled on and off', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const project = await store.createProject({
+    name: 'Archivable project',
+    sections: [{ name: '默认', order: 1 }]
+  });
+
+  const archived = await store.updateProject(project.id, { archived: true });
+  const restored = await store.updateProject(project.id, { archived: false });
+
+  assert.equal(archived.archived, true);
+  assert.equal(restored.archived, false);
 });

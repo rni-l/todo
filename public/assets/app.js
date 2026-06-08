@@ -1,7 +1,11 @@
+import { appendSubtasks } from './subtasks.js?v=__APP_VERSION__';
 import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView } from './task-date.js?v=__APP_VERSION__';
 
 const app = document.querySelector('#app');
 const APP_VERSION = window.TODO_APP_VERSION || 'dev';
+const PASSWORD_MIN_LENGTH = 3;
+const PASSWORD_MAX_LENGTH = 128;
+const PASSWORD_RULE_HINT = `至少 ${PASSWORD_MIN_LENGTH} 位，最多 ${PASSWORD_MAX_LENGTH} 位，且同时包含字母和数字；不能与当前密码相同。`;
 const state = {
   data: null,
   route: parseRoute(),
@@ -10,9 +14,12 @@ const state = {
   commandOpen: false,
   taskModalOpen: false,
   projectModalOpen: false,
+  projectEditingId: null,
   tagModalOpen: false,
   filterModalOpen: false,
   filterEditingId: null,
+  archivedSidebarOpen: false,
+  projectsShowArchived: false,
   importPreview: null,
   taskModalDefaults: {},
   saveTimer: null,
@@ -77,11 +84,7 @@ document.addEventListener('keydown', event => {
     render();
   }
   if (event.key === 'Escape') {
-    state.commandOpen = false;
-    state.taskModalOpen = false;
-    state.projectModalOpen = false;
-    state.tagModalOpen = false;
-    state.filterModalOpen = false;
+    closeModals();
     closeDrawer();
     render();
   }
@@ -365,7 +368,9 @@ function mobileTopbar() {
 
 function sidebar() {
   const counts = sidebarCounts();
-  const projects = activeProjects().slice(0, 5);
+  const projects = activeProjects();
+  const archived = archivedProjects();
+  const showArchived = state.archivedSidebarOpen || (state.route.name === 'project' && projectById(state.route.id)?.archived);
   const pinnedFilters = state.data.filters.filter(filter => filter.pinned).slice(0, 4);
   return `
     <aside class="sidebar">
@@ -386,11 +391,14 @@ function sidebar() {
       </nav>
       <nav class="nav-block" aria-label="项目">
         <div class="nav-heading">项目</div>
-        ${projects.map(project => `
-          <button class="nav-item ${state.route.name === 'project' && state.route.id === project.id ? 'active' : ''}" type="button" data-action="navigate" data-route="project/${project.id}">
-            <span class="project-dot ${project.color || ''}"></span><span>${escapeHtml(project.name)}</span><span class="nav-count">${countOpenByProject(project.id)}</span>
-          </button>
-        `).join('')}
+        ${projectsOverviewButton(counts.projects)}
+        ${projects.map(project => projectNavButton(project)).join('') || '<div class="nav-empty">还没有激活项目</div>'}
+      </nav>
+      <nav class="nav-block" aria-label="归档项目">
+        <button class="nav-item nav-toggle ${showArchived ? 'active' : ''}" type="button" data-action="toggle-archived-sidebar" aria-expanded="${showArchived ? 'true' : 'false'}">
+          <span>${showArchived ? '▾' : '▸'}</span><span>归档项目</span><span class="nav-count">${archived.length}</span>
+        </button>
+        ${showArchived ? (archived.length ? archived.map(project => projectNavButton(project, { archived: true })).join('') : '<div class="nav-empty">还没有归档项目</div>') : ''}
       </nav>
       <div class="sidebar-bottom">
         ${pinnedFilters.map(filter => `
@@ -401,6 +409,23 @@ function sidebar() {
         ${navButton(navItems.find(item => item.id === 'settings'), '')}
       </div>
     </aside>
+  `;
+}
+
+function projectNavButton(project, { archived = false } = {}) {
+  const active = state.route.name === 'project' && state.route.id === project.id;
+  return `
+    <button class="nav-item ${active ? 'active' : ''}" type="button" data-action="navigate" data-route="project/${project.id}">
+      <span class="project-dot ${project.color || ''}"></span><span>${escapeHtml(project.name)}${archived ? ' · 已归档' : ''}</span><span class="nav-count">${countOpenByProject(project.id)}</span>
+    </button>
+  `;
+}
+
+function projectsOverviewButton(count) {
+  return `
+    <button class="nav-item ${state.route.name === 'projects' ? 'active' : ''}" type="button" data-action="navigate" data-route="projects">
+      <span>●</span><span>全部项目</span><span class="nav-count">${count}</span>
+    </button>
   `;
 }
 
@@ -564,7 +589,7 @@ function taskRow(task) {
           ${priorityBadge(task.priority, { includeNormal: false })}
           ${task.reminderAt ? `<span class="mini-tag">${escapeHtml(formatTime(task.reminderAt))}</span>` : ''}
           ${task.urgent ? '<span class="mini-tag urgent">紧急</span>' : ''}
-          ${project ? `<span class="mini-tag">${escapeHtml(project.name)}</span>` : '<span class="mini-tag">收件箱</span>'}
+          ${project ? `<span class="mini-tag">${escapeHtml(project.name)}${project.archived ? ' · 已归档' : ''}</span>` : '<span class="mini-tag">收件箱</span>'}
           ${tags.map(tag => `<span class="mini-tag">#${escapeHtml(tag.name)}</span>`).join('')}
           ${attachmentCount ? `<span class="mini-tag">${attachmentCount} 个附件</span>` : ''}
           ${task.recurrence ? '<span class="mini-tag">重复</span>' : ''}
@@ -595,8 +620,51 @@ function selectControl(attrs, optionsHtml, options = {}) {
   return `<span class="${classes}"><select class="select" ${attrs}>${optionsHtml}</select></span>${options.helper ? formHint(options.helper) : ''}`;
 }
 
+function projectColorOptionsHtml(selected = 'blue') {
+  return ['blue', 'green', 'amber', 'red', 'violet']
+    .map(color => `<option value="${color}" ${color === selected ? 'selected' : ''}>${escapeHtml(projectColorLabel(color))}</option>`)
+    .join('');
+}
+
+function projectColorLabel(color) {
+  return { blue: '蓝', green: '绿', amber: '黄', red: '红', violet: '紫' }[color] || color;
+}
+
+function projectOptionsHtml(selectedId = '', { includeArchivedCurrent = false } = {}) {
+  const projects = [...activeProjects()];
+  const selected = includeArchivedCurrent ? projectById(selectedId) : null;
+  if (selected?.archived && !projects.some(project => project.id === selected.id)) {
+    projects.push(selected);
+  }
+  return projects.map(project => `
+    <option value="${project.id}" ${project.id === selectedId ? 'selected' : ''}>${escapeHtml(project.name)}${project.archived ? '（已归档）' : ''}</option>
+  `).join('');
+}
+
 function formHint(text, tone = '') {
   return `<p class="form-hint ${tone ? `is-${tone}` : ''}">${escapeHtml(text)}</p>`;
+}
+
+function validatePasswordChangeInput(currentPassword, newPassword, confirmPassword) {
+  const value = String(newPassword || '');
+  if (value !== String(confirmPassword || '')) return '两次新密码不一致';
+  if (value.length < PASSWORD_MIN_LENGTH) return `新密码至少需要 ${PASSWORD_MIN_LENGTH} 位`;
+  if (value.length > PASSWORD_MAX_LENGTH) return `新密码不能超过 ${PASSWORD_MAX_LENGTH} 位`;
+  if (!/\p{L}/u.test(value)) return '新密码需至少包含 1 个字母';
+  if (!/\p{N}/u.test(value)) return '新密码需至少包含 1 个数字';
+  if (value === String(currentPassword || '')) return '新密码不能与当前密码相同';
+  return '';
+}
+
+function passwordChangeErrorMessage(code) {
+  return {
+    current_password_incorrect: '当前密码错误',
+    password_too_short: `新密码至少需要 ${PASSWORD_MIN_LENGTH} 位`,
+    password_too_long: `新密码不能超过 ${PASSWORD_MAX_LENGTH} 位`,
+    password_missing_letter: '新密码需至少包含 1 个字母',
+    password_missing_number: '新密码需至少包含 1 个数字',
+    password_same_as_current: '新密码不能与当前密码相同'
+  }[code] || code || '提交失败';
 }
 
 function tagPicker(selectedIds = [], { mode = 'form', taskId = '' } = {}) {
@@ -863,27 +931,43 @@ function calendarPill(task) {
 
 function projectsPage() {
   const projects = activeProjects();
+  const archived = archivedProjects();
+  const archivedLabel = state.projectsShowArchived ? '隐藏已归档' : `显示已归档${archived.length ? ` (${archived.length})` : ''}`;
   return `
     ${pageHeader({
       eyebrow: 'PROJECTS · 任务组织',
       title: '项目',
       subtitle: '项目是任务的主要容器。每个任务只能属于一个项目，可在项目内继续分章节整理。',
-      actions: '<button class="soft-button" type="button" data-action="open-project-modal">新建项目</button><button class="quiet-button" type="button" data-action="show-archived">显示已归档</button>'
+      actions: `<button class="soft-button" type="button" data-action="open-project-modal">新建项目</button><button class="quiet-button" type="button" data-action="show-archived">${archivedLabel}</button>`
     })}
     <div class="project-grid">
-      ${projects.map(projectCard).join('') || emptyCard('还没有项目', '创建一个项目后，就可以按章节组织任务。')}
+      ${projects.map(project => projectCard(project)).join('') || emptyCard('还没有项目', '创建一个项目后，就可以按章节组织任务。')}
     </div>
+    ${state.projectsShowArchived ? `
+      <section class="project-section">
+        <div class="project-section-head">
+          <div>
+            <div class="eyebrow">ARCHIVED · 历史项目</div>
+            <h2>归档项目</h2>
+          </div>
+          <span class="chip">${archived.length} 个</span>
+        </div>
+        <div class="project-grid">
+          ${archived.map(project => projectCard(project, { archived: true })).join('') || emptyCard('还没有归档项目', '归档后的项目会保留任务和章节，并在这里集中恢复。')}
+        </div>
+      </section>
+    ` : ''}
   `;
 }
 
-function projectCard(project) {
+function projectCard(project, { archived = false } = {}) {
   const tasks = state.data.tasks.filter(task => task.projectId === project.id);
   const open = tasks.filter(task => !task.completed);
   const todayDue = open.filter(task => task.dueDate === todayISO()).length;
   const progress = tasks.length ? Math.round((tasks.filter(task => task.completed).length / tasks.length) * 100) : 0;
   return `
-    <article class="project-card">
-      <header><span class="chip strong"><span class="project-dot ${project.color || ''}"></span>${escapeHtml(project.name)}</span><span class="group-meta">${escapeHtml(relativeDate(project.updatedAt))}</span></header>
+    <article class="project-card ${archived ? 'is-archived' : ''}">
+      <header><span class="chip strong"><span class="project-dot ${project.color || ''}"></span>${escapeHtml(project.name)}</span><span class="group-meta">${archived ? '已归档' : escapeHtml(relativeDate(project.updatedAt))}</span></header>
       <h2 style="font-size:32px;">${escapeHtml(project.name)}</h2>
       <p>${escapeHtml(project.description || '没有说明')}</p>
       ${statsInline([
@@ -894,27 +978,39 @@ function projectCard(project) {
       <div class="progress-track" style="--value:${progress}%;"><span></span></div>
       <footer class="header-actions" style="justify-content:space-between;">
         <button class="tiny-action" type="button" data-action="navigate" data-route="project/${project.id}">打开项目</button>
-        <button class="tiny-action" type="button" data-action="archive-project" data-id="${project.id}">归档</button>
+        <button class="tiny-action" type="button" data-action="open-project-modal" data-id="${project.id}">编辑</button>
+        <button class="tiny-action" type="button" data-action="${archived ? 'restore-project' : 'archive-project'}" data-id="${project.id}">${archived ? '恢复' : '归档'}</button>
       </footer>
     </article>
   `;
 }
 
 function projectDetailPage(id) {
-  const project = projectById(id) || activeProjects()[0];
+  const project = projectById(id) || activeProjects()[0] || archivedProjects()[0];
   if (!project) return emptyFull('项目不存在', '可以先创建一个项目。');
+  const isArchived = Boolean(project.archived);
   const groups = [
-    ...project.sections.map(section => ({ ...taskGroup(section.name, openTasks().filter(task => task.projectId === project.id && task.sectionId === section.id), ''), dropProjectId: project.id, dropSectionId: section.id })),
-    { ...taskGroup('无章节', openTasks().filter(task => task.projectId === project.id && !task.sectionId), 'muted'), dropProjectId: project.id, dropSectionId: '' }
+    ...project.sections.map(section => ({
+      ...taskGroup(section.name, openTasks().filter(task => task.projectId === project.id && task.sectionId === section.id), ''),
+      ...(isArchived ? {} : { dropProjectId: project.id, dropSectionId: section.id })
+    })),
+    {
+      ...taskGroup('无章节', openTasks().filter(task => task.projectId === project.id && !task.sectionId), 'muted'),
+      ...(isArchived ? {} : { dropProjectId: project.id, dropSectionId: '' })
+    }
   ];
   return `
     ${pageHeader({
       eyebrow: 'PROJECT · 项目详情',
       title: project.name,
-      subtitle: project.description || '管理项目中的任务和章节。',
-      actions: '<button class="soft-button" type="button" data-action="add-section" data-project-id="' + project.id + '">新建章节</button><button class="quiet-button danger-button" type="button" data-action="delete-project" data-id="' + project.id + '">删除项目</button>'
+      subtitle: isArchived
+        ? `${project.description || '这个项目目前没有额外说明。'} 当前已归档，恢复后再继续添加新任务或章节。`
+        : (project.description || '管理项目中的任务和章节。'),
+      actions: isArchived
+        ? `<span class="chip warn">已归档</span><button class="soft-button" type="button" data-action="restore-project" data-id="${project.id}">恢复项目</button><button class="quiet-button" type="button" data-action="open-project-modal" data-id="${project.id}">编辑项目</button><button class="quiet-button danger-button" type="button" data-action="delete-project" data-id="${project.id}">删除项目</button>`
+        : `<button class="soft-button" type="button" data-action="open-project-modal" data-id="${project.id}">编辑项目</button><button class="quiet-button" type="button" data-action="add-section" data-project-id="${project.id}">新建章节</button><button class="quiet-button" type="button" data-action="archive-project" data-id="${project.id}">归档项目</button><button class="quiet-button danger-button" type="button" data-action="delete-project" data-id="${project.id}">删除项目</button>`
     })}
-    ${quickAdd(`添加任务到 ${project.name}`, { projectId: project.id, sectionId: project.sections[0]?.id || '' })}
+    ${isArchived ? '<div class="empty-note">已归档项目仍会保留现有任务和章节，并继续出现在任务视图中；恢复后再继续整理。</div>' : quickAdd(`添加任务到 ${project.name}`, { projectId: project.id, sectionId: project.sections[0]?.id || '' })}
     <section class="task-board">
       ${groups.map(group => groupHtml({
         ...group,
@@ -1078,9 +1174,9 @@ function settingsPanel() {
       <div class="group-header"><div class="group-title"><span class="dot"></span>账号与安全</div><span class="group-meta">${escapeHtml(state.data.user.username)}</span></div>
       <form class="panel" data-submit="change-password" style="border:0;border-radius:0;">
         <div class="field"><label>当前账号</label><input class="input" value="${escapeHtml(state.data.user.username)}" readonly /></div>
-        <div class="field"><label>当前密码</label><input class="input" name="currentPassword" type="password" autocomplete="current-password" required /></div>
-        <div class="field"><label>新密码</label><input class="input" name="newPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
-        <div class="field"><label>再次输入新密码</label><input class="input" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
+        <div class="field"><label>当前密码</label><input class="input" name="currentPassword" type="password" autocomplete="current-password" maxlength="128" required /></div>
+        <div class="field"><label>新密码</label><input class="input" name="newPassword" type="password" autocomplete="new-password" minlength="${PASSWORD_MIN_LENGTH}" maxlength="${PASSWORD_MAX_LENGTH}" required />${formHint(PASSWORD_RULE_HINT)}</div>
+        <div class="field"><label>再次输入新密码</label><input class="input" name="confirmPassword" type="password" autocomplete="new-password" minlength="${PASSWORD_MIN_LENGTH}" maxlength="${PASSWORD_MAX_LENGTH}" required /></div>
         <div class="header-actions" style="justify-content:flex-start;"><button class="soft-button" type="submit">保存新密码</button><button class="quiet-button danger-button" type="button" data-action="logout">退出登录</button></div>
       </form>
     </section>
@@ -1213,7 +1309,7 @@ function drawer(task) {
         <textarea class="drawer-title" data-drawer-field="title">${escapeHtml(task.title)}</textarea>
         <div class="property-grid">
           <label class="property"><span class="property-label">完成</span><span class="property-value"><input type="checkbox" ${task.completed ? 'checked' : ''} data-action="toggle-task" data-id="${task.id}" /> ${task.completed ? '已完成' : '未完成'}</span></label>
-          <label class="property"><span class="property-label">项目</span><span class="property-value">${selectControl('data-drawer-select="projectId"', `<option value="">收件箱</option>${state.data.projects.map(item => `<option value="${item.id}" ${item.id === task.projectId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}`)}</span></label>
+          <label class="property"><span class="property-label">项目</span><span class="property-value">${selectControl('data-drawer-select="projectId"', `<option value="">收件箱</option>${projectOptionsHtml(task.projectId, { includeArchivedCurrent: true })}`)}</span></label>
           <label class="property"><span class="property-label">章节</span><span class="property-value">${selectControl('data-drawer-select="sectionId"', `<option value="">无章节</option>${(project?.sections || []).map(section => `<option value="${section.id}" ${section.id === task.sectionId ? 'selected' : ''}>${escapeHtml(section.name)}</option>`).join('')}`)}</span></label>
           <div class="property schedule-property"><span class="property-label">日期提醒</span><span class="property-value">${schedulePicker({ mode: 'task', task })}</span></div>
           <label class="property"><span class="property-label">优先级</span><span class="property-value">${selectControl('data-drawer-select="priority"', priorityOptionsHtml(task.priority))}${priorityBadge(task.priority)}</span></label>
@@ -1255,7 +1351,7 @@ function taskModal() {
   return modal('taskModalOpen', '新建任务', `
     <form class="dialog-body" data-submit="create-task">
       <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" /></div>
-      <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${state.data.projects.map(project => `<option value="${project.id}" ${project.id === defaults.projectId ? 'selected' : ''}>${escapeHtml(project.name)}</option>`).join('')}`)}</div>
+      <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${projectOptionsHtml(defaults.projectId)}`)}</div>
       <div class="field"><label>日期和提醒</label>${schedulePicker({ mode: 'form', defaults })}</div>
       <div class="field"><label>优先级</label>${selectControl('name="priority"', priorityOptionsHtml('none'))}</div>
       <div class="field"><label>标签</label>${tagPicker(defaults.tagId ? [defaults.tagId] : [], { mode: 'form' })}</div>
@@ -1311,11 +1407,14 @@ function checklistPanel(task) {
 }
 
 function projectModal() {
-  return modal('projectModalOpen', '新建项目', `
-    <form class="dialog-body" data-submit="create-project">
-      <div class="field"><label>项目名称</label><input class="input" name="name" required placeholder="例如：家庭事务" /></div>
-      <div class="field"><label>说明</label><textarea class="textarea" name="description" placeholder="这个项目主要用来整理什么？"></textarea></div>
-      <button class="primary-add" type="submit">创建项目</button>
+  const editing = state.projectEditingId ? projectById(state.projectEditingId) : null;
+  return modal('projectModalOpen', editing ? '编辑项目' : '新建项目', `
+    <form class="dialog-body" data-submit="save-project">
+      <div class="field"><label>项目名称</label><input class="input" name="name" required autofocus placeholder="例如：家庭事务" value="${escapeHtml(editing?.name || '')}" /></div>
+      <div class="field"><label>说明</label><textarea class="textarea" name="description" placeholder="这个项目主要用来整理什么？">${escapeHtml(editing?.description || '')}</textarea></div>
+      <div class="field"><label>颜色</label>${selectControl('name="color"', projectColorOptionsHtml(editing?.color || 'blue'))}</div>
+      ${editing ? formHint(`保存后会保留现有的 ${editing.sections.length} 个章节。`) : ''}
+      <button class="primary-add" type="submit">${editing ? '保存修改' : '创建项目'}</button>
     </form>
   `);
 }
@@ -1403,11 +1502,11 @@ async function handleAction(action, payload, target) {
       if (!input) return;
       const show = input.type === 'password';
       input.type = show ? 'text' : 'password';
-      actionTarget.textContent = show ? '隐藏' : '显示';
+      target.textContent = show ? '隐藏' : '显示';
       return;
     }
     if (action === 'open-task-modal') { state.taskModalDefaults = defaultsFromPayload(payload); state.taskModalOpen = true; return render(); }
-    if (action === 'open-project-modal') { state.projectModalOpen = true; return render(); }
+    if (action === 'open-project-modal') { state.projectEditingId = payload.id || null; state.projectModalOpen = true; return render(); }
     if (action === 'open-tag-modal') { state.tagModalOpen = true; return render(); }
     if (action === 'open-filter-modal') { state.filterEditingId = null; state.filterModalOpen = true; return render(); }
     if (action === 'edit-filter') { state.filterEditingId = payload.id || null; state.filterModalOpen = true; return render(); }
@@ -1446,7 +1545,9 @@ async function handleAction(action, payload, target) {
     if (action === 'install-pwa') return installPwa();
     if (action === 'logout') return logout();
     if (action === 'confirm-import') return confirmImport();
+    if (action === 'toggle-archived-sidebar') { state.archivedSidebarOpen = !state.archivedSidebarOpen; return render(); }
     if (action === 'archive-project') return archiveProject(payload.id);
+    if (action === 'restore-project') return restoreProject(payload.id);
     if (action === 'delete-project') return deleteProject(payload.id);
     if (action === 'delete-tag') return deleteTag(payload.id);
     if (action === 'duplicate-filter') return duplicateFilter(payload.id);
@@ -1456,7 +1557,7 @@ async function handleAction(action, payload, target) {
     if (action === 'sort-hint') return showToast('当前按完成状态、优先级和手动顺序排序');
     if (action === 'open-date-menu') return showToast('在任务详情里可以设置日期和提醒');
     if (action === 'open-project-menu') return showToast('在任务详情里可以移动项目');
-    if (action === 'show-archived') return showToast('归档项目可在数据导出中保留');
+    if (action === 'show-archived') { state.projectsShowArchived = !state.projectsShowArchived; return render(); }
   } catch (error) {
     showToast(error.message || '操作失败');
   }
@@ -1504,14 +1605,24 @@ async function handleSubmit(action, form) {
       autosizeTextareas();
       return;
     }
-    if (action === 'create-project') {
-      const response = await api('/api/projects', {
-        method: 'POST',
-        body: { name: formData.get('name'), description: formData.get('description'), sections: [{ name: '默认', order: 1 }] }
-      });
+    if (action === 'save-project') {
+      const body = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        color: formData.get('color')
+      };
+      const editingId = state.projectEditingId;
+      const response = editingId
+        ? await api(`/api/projects/${editingId}`, { method: 'PATCH', body })
+        : await api('/api/projects', {
+          method: 'POST',
+          body: { ...body, sections: [{ name: '默认', order: 1 }] }
+        });
+      const projectId = editingId || response.project.id;
       closeModals();
       await refreshFromPayload(response);
-      navigate(`project/${response.project.id}`);
+      navigate(`project/${projectId}`);
+      showToast(editingId ? '项目已更新' : '项目已创建');
       return;
     }
     if (action === 'create-tag') {
@@ -1547,8 +1658,13 @@ async function handleSubmit(action, form) {
       return;
     }
     if (action === 'change-password') {
-      if (formData.get('newPassword') !== formData.get('confirmPassword')) {
-        showToast('两次新密码不一致');
+      const passwordMessage = validatePasswordChangeInput(
+        formData.get('currentPassword'),
+        formData.get('newPassword'),
+        formData.get('confirmPassword')
+      );
+      if (passwordMessage) {
+        showToast(passwordMessage);
         return;
       }
       await api('/api/account/password', {
@@ -1565,6 +1681,10 @@ async function handleSubmit(action, form) {
     if (action === 'login') {
       state.loginError = error.message === 'invalid_credentials' ? '密码错误，请重新输入。' : '登录失败，请稍后重试。';
       renderLogin(error);
+      return;
+    }
+    if (action === 'change-password') {
+      showToast(passwordChangeErrorMessage(error.message));
       return;
     }
     showToast(error.message === 'invalid_credentials' ? '密码错误' : error.message || '提交失败');
@@ -1744,8 +1864,10 @@ async function addSubtask(id, inputTitle) {
   if (!task) return;
   const title = inputTitle === undefined ? prompt('子任务标题，可以粘贴多行内容') : String(inputTitle || '').trim();
   if (!title) return;
-  const subtasks = [...(task.subtasks || []), { title, completed: false, order: (task.subtasks || []).length + 1, dueDate: null, priority: 'none' }];
-  await updateTask(id, { subtasks });
+  const batch = appendSubtasks(task.subtasks || [], title);
+  if (!batch.createdCount) return;
+  await updateTask(id, { subtasks: batch.subtasks }, { silent: true });
+  showToast(batch.createdCount > 1 ? `已添加 ${batch.createdCount} 个检查项` : '检查项已添加');
 }
 
 async function updateSubtaskTitle(taskId, subtaskId, title) {
@@ -1912,8 +2034,16 @@ async function logout() {
 
 async function archiveProject(id) {
   const response = await api(`/api/projects/${id}`, { method: 'PATCH', body: { archived: true } });
+  state.archivedSidebarOpen = true;
+  state.projectsShowArchived = true;
   await refreshFromPayload(response);
-  showToast('项目已归档');
+  showToast('项目已归档，可在归档项目里恢复');
+}
+
+async function restoreProject(id) {
+  const response = await api(`/api/projects/${id}`, { method: 'PATCH', body: { archived: false } });
+  await refreshFromPayload(response);
+  showToast('项目已恢复');
 }
 
 async function deleteProject(id) {
@@ -1960,6 +2090,7 @@ function closeModals() {
   state.commandOpen = false;
   state.taskModalOpen = false;
   state.projectModalOpen = false;
+  state.projectEditingId = null;
   state.tagModalOpen = false;
   state.filterModalOpen = false;
   state.filterEditingId = null;
@@ -2093,6 +2224,10 @@ function activeProjects() {
   return state.data.projects.filter(project => !project.archived).sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
+function archivedProjects() {
+  return state.data.projects.filter(project => project.archived).sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
 function countOpenByProject(id) {
   return openTasks().filter(task => task.projectId === id).length;
 }
@@ -2220,7 +2355,8 @@ function contextLabel(context) {
 }
 
 function taskMetaText(task) {
-  const project = projectById(task.projectId)?.name || '收件箱';
+  const projectRecord = projectById(task.projectId);
+  const project = projectRecord ? `${projectRecord.name}${projectRecord.archived ? '（已归档）' : ''}` : '收件箱';
   const date = task.dueDate ? shortDate(task.dueDate) : '无日期';
   return `${project} · ${date} · ${priorityLabel(task.priority)}`;
 }

@@ -4,6 +4,8 @@ const ITERATIONS = 210000;
 const KEY_LENGTH = 64;
 const DIGEST = 'sha512';
 const SESSION_DIGEST = 'sha256';
+export const PASSWORD_MIN_LENGTH = 3;
+export const PASSWORD_MAX_LENGTH = 128;
 
 export function createPasswordRecord(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -26,6 +28,16 @@ export function verifyPassword(password, record) {
   const candidate = Buffer.from(actual, 'hex');
   if (expected.length !== candidate.length) return false;
   return crypto.timingSafeEqual(expected, candidate);
+}
+
+export function validateNewPassword(password, { currentPassword = null } = {}) {
+  const value = String(password ?? '');
+  if (value.length < PASSWORD_MIN_LENGTH) return 'password_too_short';
+  if (value.length > PASSWORD_MAX_LENGTH) return 'password_too_long';
+  if (!/\p{L}/u.test(value)) return 'password_missing_letter';
+  if (!/\p{N}/u.test(value)) return 'password_missing_number';
+  if (currentPassword !== null && value === String(currentPassword)) return 'password_same_as_current';
+  return null;
 }
 
 export function createSessionSecret(record, explicitSecret = '') {
