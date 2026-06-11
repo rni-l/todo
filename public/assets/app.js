@@ -1,5 +1,7 @@
 import { appendSubtasks } from './subtasks.js?v=__APP_VERSION__';
 import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView } from './task-date.js?v=__APP_VERSION__';
+import { buildReportSummary } from './reports.js?v=__APP_VERSION__';
+import { preserveTaskCreateContext, resolveTaskModalDefaults } from './task-create.js?v=__APP_VERSION__';
 
 const app = document.querySelector('#app');
 const APP_VERSION = window.TODO_APP_VERSION || 'dev';
@@ -25,6 +27,7 @@ const state = {
   saveTimer: null,
   saveState: '已保存',
   calendarMode: 'month',
+  selectedCalendarDate: '',
   settingsPanel: 'account',
   toastTimer: null,
   deferredInstallPrompt: null
@@ -37,6 +40,7 @@ const navItems = [
   { id: 'recent', label: '最近7天', icon: '↺', mobile: true, mobileLabel: '近7天' },
   { id: 'calendar', label: '日历', icon: '▦', mobile: true },
   { id: 'matrix', label: '四象限', icon: '⊞', mobile: true },
+  { id: 'reports', label: '统计', icon: '◫' },
   { id: 'projects', label: '项目', icon: '●', mobile: true },
   { id: 'tags', label: '标签', icon: '#'},
   { id: 'filters', label: '智能过滤器', icon: '⚑'},
@@ -51,6 +55,7 @@ const routeTitles = {
   recent: ['RECENT · 最近7天', '最近7天'],
   calendar: ['CALENDAR · 日期分布', '日历'],
   matrix: ['MATRIX · 重要紧急', '四象限'],
+  reports: ['REPORTS · 数据概览', '统计'],
   projects: ['PROJECTS · 任务组织', '项目'],
   project: ['PROJECT · 项目详情', '项目详情'],
   tags: ['TAGS · 横向组织', '标签'],
@@ -63,7 +68,10 @@ const routeTitles = {
 
 window.addEventListener('hashchange', () => {
   state.route = parseRoute();
-  if (state.route.name === 'calendar') state.calendarMode = 'month';
+  if (state.route.name === 'calendar') {
+    state.calendarMode = 'month';
+    ensureCalendarSelectedDate();
+  }
   state.commandOpen = false;
   render();
 });
@@ -259,6 +267,7 @@ async function api(path, options = {}) {
 async function loadData() {
   state.data = await api('/api/data');
   state.loginError = '';
+  ensureCalendarSelectedDate();
   if (!state.selectedTaskId) {
     const first = openTasks().find(task => task.dueDate === todayISO()) || openTasks()[0];
     state.selectedTaskId = first?.id || null;
@@ -289,6 +298,8 @@ function render() {
     renderLogin();
     return;
   }
+
+  ensureCalendarSelectedDate();
 
   const selectedTask = taskById(state.selectedTaskId);
   const hasDrawer = Boolean(selectedTask);
@@ -479,6 +490,7 @@ function mainView() {
   if (route.name === 'recent') return recentPage();
   if (route.name === 'calendar') return calendarPage();
   if (route.name === 'matrix') return matrixPage();
+  if (route.name === 'reports') return reportsPage();
   if (route.name === 'projects') return projectsPage();
   if (route.name === 'project') return projectDetailPage(route.id);
   if (route.name === 'tags') return tagsPage();
@@ -831,6 +843,117 @@ function matrixPage() {
   `;
 }
 
+function reportsPage() {
+  const report = buildReportSummary(state.data, todayISO());
+  return `
+    ${pageHeader({
+      eyebrow: 'REPORTS · 数据概览',
+      title: '统计',
+      subtitle: '用当前任务数据看今天压力、未来七天负载和项目分布，不做重型仪表盘。',
+      actions: '<button class="quiet-button" type="button" data-action="navigate" data-route="calendar">查看日历</button>'
+    })}
+    ${stats([
+      { value: report.summary.open, label: '未完成' },
+      { value: report.summary.overdue, label: '已逾期' },
+      { value: report.summary.dueToday, label: '今天到期' },
+      { value: report.summary.completedThisWeek, label: '本周完成' }
+    ])}
+    <section class="reports-grid">
+      <section class="group report-hero">
+        <div class="group-header">
+          <div class="group-title"><span class="dot accent"></span>执行快照</div>
+          <div class="group-meta">今日 / 本周</div>
+        </div>
+        <div class="report-hero-body">
+          <article class="report-hero-metric">
+            <strong>${report.summary.completedToday}</strong>
+            <span>今日完成</span>
+          </article>
+          <article class="report-hero-metric">
+            <strong>${report.insights.upcomingWeek}</strong>
+            <span>未来7天有日期任务</span>
+          </article>
+          <article class="report-hero-metric">
+            <strong>${report.insights.urgentOpen}</strong>
+            <span>当前紧急任务</span>
+          </article>
+          <article class="report-hero-metric">
+            <strong>${report.insights.inboxOpen}</strong>
+            <span>收件箱未整理</span>
+          </article>
+        </div>
+      </section>
+      <section class="group">
+        <div class="group-header">
+          <div class="group-title"><span class="dot danger"></span>优先级分布</div>
+          <div class="group-meta">${report.summary.open} 项</div>
+        </div>
+        <div class="report-list">
+          ${report.priorityBreakdown.map(item => metricBar({
+            label: priorityLabel(item.key),
+            value: item.count,
+            max: Math.max(...report.priorityBreakdown.map(entry => entry.count), 1),
+            tone: priorityMeta(item.key).key
+          })).join('')}
+        </div>
+      </section>
+      <section class="group">
+        <div class="group-header">
+          <div class="group-title"><span class="dot success"></span>未来7天负载</div>
+          <div class="group-meta">${report.insights.datedOpen} 项有日期</div>
+        </div>
+        <div class="report-list">
+          ${report.dueBuckets.map(item => metricBar({
+            label: shortDate(item.day),
+            value: item.count,
+            max: Math.max(...report.dueBuckets.map(entry => entry.count), 1),
+            tone: item.day === todayISO() ? 'success' : 'accent'
+          })).join('')}
+        </div>
+      </section>
+      <section class="group">
+        <div class="group-header">
+          <div class="group-title"><span class="dot warn"></span>状态桶</div>
+          <div class="group-meta">全部任务</div>
+        </div>
+        <div class="report-chip-grid">
+          ${report.statusBuckets.map(item => `<article class="report-chip-card"><strong>${item.count}</strong><span>${escapeHtml(reportStatusLabel(item.key))}</span></article>`).join('')}
+        </div>
+      </section>
+      <section class="group report-projects">
+        <div class="group-header">
+          <div class="group-title"><span class="dot"></span>项目工作量</div>
+          <div class="group-meta">${report.projectBreakdown.length} 个项目</div>
+        </div>
+        <div class="report-project-list">
+          ${report.projectBreakdown.length ? report.projectBreakdown.map(project => `
+            <article class="report-project-row">
+              <div>
+                <strong>${escapeHtml(project.name)}</strong>
+                <span>${project.overdue ? `${project.overdue} 项逾期` : '无逾期'}</span>
+              </div>
+              <div class="report-project-meta">
+                <span class="mini-tag">${project.open} 未完成</span>
+                <span class="mini-tag">${project.completed} 已完成</span>
+              </div>
+            </article>
+          `).join('') : emptyCompact('还没有项目数据')}
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function metricBar({ label, value, max, tone = 'accent' }) {
+  const width = max > 0 ? Math.max(8, Math.round((value / max) * 100)) : 0;
+  return `
+    <div class="metric-bar">
+      <div class="metric-bar-head"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>
+      <div class="metric-bar-track"><span class="metric-bar-fill ${tone}" style="width:${width}%;"></span></div>
+    </div>
+  `;
+}
+
 function matrixQuadrant(quadrant) {
   return `
     <section class="group matrix-quadrant ${quadrant.tone}">
@@ -851,11 +974,12 @@ function matrixQuadrant(quadrant) {
 function calendarPage() {
   const days = Array.from({ length: 7 }, (_, index) => todayISO(index - 2));
   const monthDays = monthGridDays();
+  const selectedDate = state.selectedCalendarDate || todayISO();
   return `
     ${pageHeader({
       eyebrow: 'CALENDAR · 日期分布',
       title: '日历',
-      subtitle: '日历只按截止日期展示任务。提醒时间作为辅助文字显示，不形成时间块。',
+      subtitle: `已选 ${formatLongDate(selectedDate)}。点击日期后，所有“新建任务”默认带入这个日期。`,
       actions: `
         <button class="quiet-button" type="button" data-action="calendar-today">今天</button>
         <div class="segmented">
@@ -894,7 +1018,7 @@ function calendarDayColumn(day) {
   const limit = calendarDayLimit();
   const visible = tasks.slice(0, limit);
   return `
-    <article class="day-column ${day === todayISO() ? 'today' : ''}" data-drop-date="${day}">
+    <article class="day-column ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}">
       <div class="day-head"><strong>${escapeHtml(weekdayName(day))}</strong><span>${escapeHtml(shortDate(day))} · ${tasks.length}</span></div>
       ${visible.map(calendarPill).join('')}
       ${tasks.length > visible.length ? `<button class="tiny-action" type="button" data-action="filter-date" data-date="${day}">还有 ${tasks.length - visible.length} 项</button>` : ''}
@@ -908,7 +1032,7 @@ function calendarMonthCell(dayMeta) {
   const tasks = sortTasks(openTasks().filter(task => task.dueDate === day));
   const visible = tasks.slice(0, calendarDayLimit());
   return `
-    <article class="calendar-day ${day === todayISO() ? 'today' : ''} ${dayMeta.inMonth ? '' : 'muted'}" data-drop-date="${day}">
+    <article class="calendar-day ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''} ${dayMeta.inMonth ? '' : 'muted'}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}">
       <div class="day-head"><strong>${Number(day.slice(8, 10))}</strong><span>${tasks.length}</span></div>
       ${visible.map(calendarPill).join('')}
       ${tasks.length > visible.length ? `<button class="tiny-action" type="button" data-action="filter-date" data-date="${day}">还有 ${tasks.length - visible.length} 项</button>` : ''}
@@ -1350,15 +1474,18 @@ function taskModal() {
   const defaults = taskModalDefaults();
   return modal('taskModalOpen', '新建任务', `
     <form class="dialog-body" data-submit="create-task">
-      <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" /></div>
+      <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" value="${escapeHtml(defaults.title || '')}" /></div>
       <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${projectOptionsHtml(defaults.projectId)}`)}</div>
       <div class="field"><label>日期和提醒</label>${schedulePicker({ mode: 'form', defaults })}</div>
-      <div class="field"><label>优先级</label>${selectControl('name="priority"', priorityOptionsHtml('none'))}</div>
-      <div class="field"><label>标签</label>${tagPicker(defaults.tagId ? [defaults.tagId] : [], { mode: 'form' })}</div>
-      <label class="check-field"><input type="checkbox" name="urgent" value="true" /><span>标记为紧急</span></label>
+      <div class="field"><label>优先级</label>${selectControl('name="priority"', priorityOptionsHtml(defaults.priority || 'none'))}</div>
+      <div class="field"><label>标签</label>${tagPicker(defaults.tags?.length ? defaults.tags : (defaults.tagId ? [defaults.tagId] : []), { mode: 'form' })}</div>
+      <label class="check-field"><input type="checkbox" name="urgent" value="true" ${defaults.urgent ? 'checked' : ''} /><span>标记为紧急</span></label>
       <input type="hidden" name="sectionId" value="${escapeHtml(defaults.sectionId || '')}" />
       <input type="hidden" name="tagId" value="${escapeHtml(defaults.tagId || '')}" />
-      <button class="primary-add" type="submit">创建任务</button>
+      <div class="dialog-actions">
+        <button class="soft-button" type="submit" name="submitMode" value="continue">创建并继续</button>
+        <button class="primary-add" type="submit" name="submitMode" value="close">创建后关闭</button>
+      </div>
     </form>
   `, 'task-modal');
 }
@@ -1465,7 +1592,7 @@ function commandModal() {
           <input class="input" data-command-input placeholder="搜索任务、项目或动作" autofocus />
           <div class="cmd-list" data-command-results>
             <button class="cmd-item active" type="button" data-action="open-task-modal"><span class="file-icon">+</span><span><strong>新建任务</strong><span class="task-meta">默认应用当前页面上下文</span></span><span class="shortcut">Enter</span></button>
-            ${navItems.slice(0, 9).map(item => `<button class="cmd-item" type="button" data-action="navigate" data-route="${item.id}"><span class="file-icon">${item.icon}</span><span><strong>打开${escapeHtml(item.label)}</strong><span class="task-meta">视图</span></span><span class="shortcut">G</span></button>`).join('')}
+            ${navItems.slice(0, 10).map(item => `<button class="cmd-item" type="button" data-action="navigate" data-route="${item.id}"><span class="file-icon">${item.icon}</span><span><strong>打开${escapeHtml(item.label)}</strong><span class="task-meta">视图</span></span><span class="shortcut">G</span></button>`).join('')}
             ${tasks.map(task => `<button class="cmd-item" type="button" data-action="select-task" data-task-id="${task.id}"><span class="file-icon">T</span><span><strong>${escapeHtml(task.title)}</strong><span class="task-meta">${escapeHtml(taskMetaText(task))}</span></span><span class="shortcut">↵</span></button>`).join('')}
           </div>
         </div>
@@ -1483,6 +1610,7 @@ function renderCommandResults(query) {
   const tags = state.data.tags.filter(tag => !normalized || tag.name.toLowerCase().includes(normalized)).slice(0, 4);
   box.innerHTML = `
     <button class="cmd-item active" type="button" data-action="open-task-modal"><span class="file-icon">+</span><span><strong>新建任务</strong><span class="task-meta">当前页面上下文</span></span><span class="shortcut">Enter</span></button>
+    ${normalized ? '' : `<button class="cmd-item" type="button" data-action="navigate" data-route="reports"><span class="file-icon">◫</span><span><strong>打开统计</strong><span class="task-meta">概览任务负载与项目分布</span></span><span class="shortcut">G</span></button>`}
     ${tasks.map(task => `<button class="cmd-item" type="button" data-action="select-task" data-task-id="${task.id}"><span class="file-icon">T</span><span><strong>${escapeHtml(task.title)}</strong><span class="task-meta">${escapeHtml(taskMetaText(task))}</span></span><span class="shortcut">↵</span></button>`).join('')}
     ${projects.map(project => `<button class="cmd-item" type="button" data-action="navigate" data-route="project/${project.id}"><span class="file-icon">P</span><span><strong>${escapeHtml(project.name)}</strong><span class="task-meta">${countOpenByProject(project.id)} 项未完成</span></span><span class="shortcut">↵</span></button>`).join('')}
     ${tags.map(tag => `<button class="cmd-item" type="button" data-action="navigate" data-route="tag/${tag.id}"><span class="file-icon">#</span><span><strong>${escapeHtml(tag.name)}</strong><span class="task-meta">${tagTasks(tag.id).length} 项任务</span></span><span class="shortcut">↵</span></button>`).join('')}
@@ -1505,7 +1633,12 @@ async function handleAction(action, payload, target) {
       target.textContent = show ? '隐藏' : '显示';
       return;
     }
-    if (action === 'open-task-modal') { state.taskModalDefaults = defaultsFromPayload(payload); state.taskModalOpen = true; return render(); }
+    if (action === 'open-task-modal') {
+      if (payload.dueDate || payload.routeDate) state.selectedCalendarDate = payload.dueDate || payload.routeDate;
+      state.taskModalDefaults = defaultsFromPayload(payload);
+      state.taskModalOpen = true;
+      return render();
+    }
     if (action === 'open-project-modal') { state.projectEditingId = payload.id || null; state.projectModalOpen = true; return render(); }
     if (action === 'open-tag-modal') { state.tagModalOpen = true; return render(); }
     if (action === 'open-filter-modal') { state.filterEditingId = null; state.filterModalOpen = true; return render(); }
@@ -1535,7 +1668,18 @@ async function handleAction(action, payload, target) {
     if (action === 'set-form-date') { setFormDate(target.closest('form'), payload.value || ''); return; }
     if (action === 'set-form-reminder') { setFormReminder(target.closest('form'), payload.time || ''); return; }
     if (action === 'calendar-mode') { state.calendarMode = payload.mode; return render(); }
-    if (action === 'calendar-today') { showToast('已回到今天'); return; }
+    if (action === 'calendar-today') {
+      state.selectedCalendarDate = todayISO();
+      showToast('已回到今天');
+      return render();
+    }
+    if (action === 'select-calendar-date') {
+      if (payload.date) {
+        state.selectedCalendarDate = payload.date;
+        return render();
+      }
+      return;
+    }
     if (action === 'filter-date') { showToast(`已聚焦 ${payload.date}`); return; }
     if (action === 'settings-panel') { state.settingsPanel = payload.panel; return render(); }
     if (action === 'theme') return updateSettings({ theme: payload.theme });
@@ -1582,6 +1726,7 @@ async function handleSubmit(action, form) {
     if (action === 'quick-task' || action === 'create-task') {
       const tagId = formData.get('tagId');
       const selectedTags = formData.getAll('tags');
+      const submitMode = formData.get('submitMode') || 'close';
       const payload = {
         title: formData.get('title'),
         projectId: formData.get('projectId') || null,
@@ -1594,9 +1739,20 @@ async function handleSubmit(action, form) {
       };
       const response = await api('/api/tasks', { method: 'POST', body: payload });
       state.selectedTaskId = response.task.id;
-      closeModals();
       await refreshFromPayload(response);
-      showToast('任务已添加');
+      if (action === 'create-task' && submitMode === 'continue') {
+        state.taskModalDefaults = preserveTaskCreateContext({
+          ...payload,
+          tagId: tagId || '',
+          tags: payload.tags
+        });
+        state.taskModalOpen = true;
+        showToast('任务已添加，继续新建');
+      } else {
+        closeModals();
+        showToast('任务已添加');
+      }
+      render();
       return;
     }
     if (action === 'add-subtask') {
@@ -2127,22 +2283,11 @@ function autosizeTextarea(textarea) {
 }
 
 function taskModalDefaults() {
-  return {
-    dueDate: todayISO(),
-    projectId: '',
-    sectionId: '',
-    tagId: '',
-    ...state.taskModalDefaults
-  };
+  return resolveTaskModalDefaults(state.taskModalDefaults, state.route, state.selectedCalendarDate || todayISO(), todayISO());
 }
 
 function defaultsFromPayload(payload = {}) {
-  return {
-    dueDate: payload.dueDate || todayISO(),
-    projectId: payload.projectId || '',
-    sectionId: payload.sectionId || '',
-    tagId: payload.tagId || ''
-  };
+  return resolveTaskModalDefaults(payload, state.route, state.selectedCalendarDate || todayISO(), todayISO());
 }
 
 function openTasks() {
@@ -2344,6 +2489,7 @@ function routeIcon() {
   if (state.route.name === 'filter') return '⚑';
   if (state.route.name === 'matrix') return '⊞';
   if (state.route.name === 'recent') return '↺';
+  if (state.route.name === 'reports') return '◫';
   return navItems.find(item => item.id === state.route.name)?.icon || '✓';
 }
 
@@ -2352,6 +2498,20 @@ function contextLabel(context) {
   if (context.tagId) return `#${tagById(context.tagId)?.name || '标签'}`;
   if (context.dueDate) return shortDate(context.dueDate);
   return '收件箱';
+}
+
+function reportStatusLabel(key) {
+  return {
+    overdue: '逾期',
+    today: '今天',
+    future: '未来',
+    undated: '无日期',
+    completed: '已完成'
+  }[key] || key;
+}
+
+function ensureCalendarSelectedDate() {
+  if (!state.selectedCalendarDate) state.selectedCalendarDate = todayISO();
 }
 
 function taskMetaText(task) {

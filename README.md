@@ -40,7 +40,7 @@ Original static prototype files remain available from the running server at `/pr
 
 ## Release Snapshot
 
-`v1.4` starts the online service from a packaged release snapshot instead of the active working tree. This lets you keep developing the next version without changing the files PM2 is serving.
+`v1.4+` starts the online service from a packaged release snapshot instead of the active working tree. This lets you keep developing the next version without changing the files PM2 is serving.
 
 Build a release snapshot:
 
@@ -88,8 +88,8 @@ npm run pm2:stop
 ## Implemented Scope
 
 - Single-user password login
-- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Projects, Tags, Smart Filters, Completed, Settings
-- Task create/edit/complete/delete with priority, urgent marker, tags, due dates, reminders, recurrence, checklist subtasks, markdown notes, and attachments
+- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Reports, Projects, Tags, Smart Filters, Completed, Settings
+- Task create/edit/complete/delete with priority, urgent marker, tags, due dates, reminders, recurrence, checklist subtasks, markdown notes, attachments, and continuous-create modal flow
 - Task detail drawer with metadata, markdown preview, checklist subtasks, recurrence, reminders, and attachments
 - Project, tag, and smart filter management
 - Browser notification permission and test notification

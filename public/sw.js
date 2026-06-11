@@ -4,8 +4,10 @@ const APP_SHELL = [
   '/index.html',
   '/assets/app.css?v=__APP_VERSION__',
   '/assets/app.js?v=__APP_VERSION__',
+  '/assets/reports.js?v=__APP_VERSION__',
   '/assets/subtasks.js?v=__APP_VERSION__',
   '/assets/task-date.js?v=__APP_VERSION__',
+  '/assets/task-create.js?v=__APP_VERSION__',
   '/assets/icon.svg',
   '/manifest.webmanifest?v=__APP_VERSION__'
 ];

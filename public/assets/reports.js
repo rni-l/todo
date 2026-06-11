@@ -1,0 +1,84 @@
+import { getRecentWindowDays, getTaskDateStatus } from './task-date.js';
+
+function bucketStatus(task, today) {
+  if (task.completed) return 'completed';
+  return getTaskDateStatus(task, today).key;
+}
+
+function startOfWeek(today) {
+  const date = new Date(`${today}T12:00:00`);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+}
+
+export function buildReportSummary(data, today) {
+  const tasks = data?.tasks || [];
+  const projects = data?.projects || [];
+  const open = tasks.filter(task => !task.completed);
+  const completed = tasks.filter(task => task.completed);
+  const recentWindow = getRecentWindowDays(today);
+  const recentEnd = recentWindow[recentWindow.length - 1];
+  const weekStart = startOfWeek(today);
+
+  const projectMap = new Map(projects.map(project => [project.id, project]));
+  const datedOpen = open.filter(task => task.dueDate);
+
+  const priorityBreakdown = ['high', 'medium', 'low', 'none'].map(key => ({
+    key,
+    count: open.filter(task => task.priority === key).length
+  }));
+
+  const projectBreakdown = [...projectMap.values()]
+    .map(project => {
+      const projectTasks = tasks.filter(task => task.projectId === project.id);
+      const projectOpen = projectTasks.filter(task => !task.completed);
+      const overdue = projectOpen.filter(task => task.dueDate && task.dueDate < today).length;
+      return {
+        id: project.id,
+        name: project.name,
+        open: projectOpen.length,
+        completed: projectTasks.filter(task => task.completed).length,
+        overdue
+      };
+    })
+    .filter(project => project.open || project.completed)
+    .sort((a, b) => b.open - a.open || b.overdue - a.overdue || a.name.localeCompare(b.name));
+
+  const dueBuckets = recentWindow.map(day => ({
+    day,
+    count: open.filter(task => task.dueDate === day).length
+  }));
+
+  const statusBuckets = ['overdue', 'today', 'future', 'undated', 'completed'].map(key => ({
+    key,
+    count: tasks.filter(task => bucketStatus(task, today) === key).length
+  }));
+
+  const completedToday = completed.filter(task => task.completedAt?.slice(0, 10) === today).length;
+  const completedThisWeek = completed.filter(task => {
+    const day = task.completedAt?.slice(0, 10);
+    return day && day >= weekStart && day <= today;
+  }).length;
+
+  return {
+    summary: {
+      open: open.length,
+      overdue: open.filter(task => task.dueDate && task.dueDate < today).length,
+      dueToday: open.filter(task => task.dueDate === today).length,
+      completedToday,
+      completedThisWeek
+    },
+    priorityBreakdown,
+    projectBreakdown,
+    dueBuckets,
+    statusBuckets,
+    insights: {
+      datedOpen: datedOpen.length,
+      upcomingWeek: open.filter(task => task.dueDate && task.dueDate >= today && task.dueDate <= recentEnd).length,
+      inboxOpen: open.filter(task => !task.projectId).length,
+      urgentOpen: open.filter(task => task.urgent).length
+    }
+  };
+}
