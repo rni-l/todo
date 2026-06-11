@@ -136,6 +136,45 @@ test('legacy payloads backfill calendar day limit and subtask metadata', async (
     dueDate: null,
     priority: 'none'
   });
+  assert.equal(migrated.data.tasks[0].closed, false);
+  assert.equal(migrated.data.tasks[0].closedAt, null);
+  assert.equal(migrated.data.tasks[0].startDate, null);
+  assert.equal(migrated.data.tasks[0].reminderEndAt, null);
+});
+
+test('task close state is distinct from completion and can be restored', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({ title: 'cancelled work', completed: true, completedAt: '2026-06-08T01:00:00.000Z' });
+
+  const closed = await store.updateTask(task.id, { closed: true });
+  assert.equal(closed.closed, true);
+  assert.ok(closed.closedAt);
+  assert.equal(closed.completed, false);
+  assert.equal(closed.completedAt, null);
+
+  const restored = await store.updateTask(task.id, { closed: false });
+  assert.equal(restored.closed, false);
+  assert.equal(restored.closedAt, null);
+  assert.equal(restored.completed, false);
+});
+
+test('closing recurring task does not create recurring copy', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({
+    title: 'weekly cancelled',
+    dueDate: '2026-06-08',
+    recurrence: { type: 'weekly', interval: 1 }
+  });
+
+  await store.updateTask(task.id, { closed: true });
+
+  const copies = store.data.tasks.filter(item => item.title === 'weekly cancelled');
+  assert.equal(copies.length, 1);
+  assert.equal(copies[0].closed, true);
 });
 
 test('task update persists edited subtask metadata', async () => {

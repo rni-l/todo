@@ -52,6 +52,17 @@ function normalizeSubtask(input = {}, index = 0) {
   };
 }
 
+function normalizeDateRange(input = {}, existing = {}) {
+  const hasStartDate = Object.prototype.hasOwnProperty.call(input, 'startDate');
+  const hasDueDate = Object.prototype.hasOwnProperty.call(input, 'dueDate');
+  const startDate = hasStartDate ? input.startDate || null : existing.startDate || null;
+  const dueDate = hasDueDate ? input.dueDate || null : existing.dueDate || null;
+  if (startDate && dueDate && startDate > dueDate) {
+    return { startDate: dueDate, dueDate: startDate };
+  }
+  return { startDate, dueDate };
+}
+
 function normalizeSettings(input = {}, existing = {}) {
   return {
     theme: input.theme ?? existing.theme ?? 'system',
@@ -187,10 +198,14 @@ function taskSeed(title, input = {}) {
     title,
     completed: false,
     completedAt: null,
+    closed: false,
+    closedAt: null,
     projectId: input.projectId ?? null,
     sectionId: input.sectionId ?? null,
+    startDate: input.startDate ?? null,
     dueDate: input.dueDate ?? null,
     reminderAt: input.reminderAt ?? null,
+    reminderEndAt: input.reminderEndAt ?? null,
     priority: input.priority ?? 'none',
     urgent: Boolean(input.urgent ?? false),
     tags: input.tags ?? [],
@@ -210,15 +225,23 @@ function taskSeed(title, input = {}) {
 function normalizeTask(input, existing = {}) {
   const timestamp = nowISO();
   const has = key => Object.prototype.hasOwnProperty.call(input, key);
+  const dateRange = normalizeDateRange({
+    ...(has('startDate') ? { startDate: input.startDate } : {}),
+    ...(has('dueDate') ? { dueDate: input.dueDate } : {})
+  }, existing);
   return {
     id: existing.id || input.id || createId('task'),
     title: String(input.title ?? existing.title ?? '').trim() || '未命名任务',
     completed: Boolean(input.completed ?? existing.completed ?? false),
     completedAt: has('completedAt') ? input.completedAt || null : existing.completedAt ?? null,
+    closed: Boolean(input.closed ?? existing.closed ?? false),
+    closedAt: has('closedAt') ? input.closedAt || null : existing.closedAt ?? null,
     projectId: has('projectId') ? input.projectId || null : existing.projectId ?? null,
     sectionId: has('sectionId') ? input.sectionId || null : existing.sectionId ?? null,
-    dueDate: has('dueDate') ? input.dueDate || null : existing.dueDate ?? null,
+    startDate: dateRange.startDate,
+    dueDate: dateRange.dueDate,
     reminderAt: has('reminderAt') ? input.reminderAt || null : existing.reminderAt ?? null,
+    reminderEndAt: has('reminderEndAt') ? input.reminderEndAt || null : existing.reminderEndAt ?? null,
     priority: ['none', 'low', 'medium', 'high'].includes(input.priority) ? input.priority : existing.priority || 'none',
     urgent: has('urgent') ? Boolean(input.urgent) : Boolean(existing.urgent ?? false),
     tags: has('tags') && Array.isArray(input.tags) ? input.tags : existing.tags || [],
@@ -403,8 +426,19 @@ export class TodoStore {
     const next = normalizeTask({ ...existing, ...patch }, existing);
     if (patch.completed !== undefined && Boolean(patch.completed) !== Boolean(existing.completed)) {
       next.completedAt = patch.completed ? nowISO() : null;
+      if (patch.completed) {
+        next.closed = false;
+        next.closedAt = null;
+      }
       if (patch.completed && next.recurrence?.type) {
         await this.createRecurringCopy(next);
+      }
+    }
+    if (patch.closed !== undefined && Boolean(patch.closed) !== Boolean(existing.closed)) {
+      next.closedAt = patch.closed ? nowISO() : null;
+      if (patch.closed) {
+        next.completed = false;
+        next.completedAt = null;
       }
     }
     this.data.tasks[index] = next;

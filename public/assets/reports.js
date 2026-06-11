@@ -1,6 +1,7 @@
-import { getRecentWindowDays, getTaskDateStatus } from './task-date.js';
+import { getRecentWindowDays, getTaskDateStatus, taskCoversDate, taskDateRange } from './task-date.js';
 
 function bucketStatus(task, today) {
+  if (task.closed) return 'closed';
   if (task.completed) return 'completed';
   return getTaskDateStatus(task, today).key;
 }
@@ -16,14 +17,15 @@ function startOfWeek(today) {
 export function buildReportSummary(data, today) {
   const tasks = data?.tasks || [];
   const projects = data?.projects || [];
-  const open = tasks.filter(task => !task.completed);
+  const open = tasks.filter(task => !task.completed && !task.closed);
   const completed = tasks.filter(task => task.completed);
+  const closed = tasks.filter(task => task.closed);
   const recentWindow = getRecentWindowDays(today);
   const recentEnd = recentWindow[recentWindow.length - 1];
   const weekStart = startOfWeek(today);
 
   const projectMap = new Map(projects.map(project => [project.id, project]));
-  const datedOpen = open.filter(task => task.dueDate);
+  const datedOpen = open.filter(task => taskDateRange(task).endDate);
 
   const priorityBreakdown = ['high', 'medium', 'low', 'none'].map(key => ({
     key,
@@ -33,25 +35,29 @@ export function buildReportSummary(data, today) {
   const projectBreakdown = [...projectMap.values()]
     .map(project => {
       const projectTasks = tasks.filter(task => task.projectId === project.id);
-      const projectOpen = projectTasks.filter(task => !task.completed);
-      const overdue = projectOpen.filter(task => task.dueDate && task.dueDate < today).length;
+      const projectOpen = projectTasks.filter(task => !task.completed && !task.closed);
+      const overdue = projectOpen.filter(task => {
+        const { endDate } = taskDateRange(task);
+        return endDate && endDate < today;
+      }).length;
       return {
         id: project.id,
         name: project.name,
         open: projectOpen.length,
         completed: projectTasks.filter(task => task.completed).length,
+        closed: projectTasks.filter(task => task.closed).length,
         overdue
       };
     })
-    .filter(project => project.open || project.completed)
+    .filter(project => project.open || project.completed || project.closed)
     .sort((a, b) => b.open - a.open || b.overdue - a.overdue || a.name.localeCompare(b.name));
 
   const dueBuckets = recentWindow.map(day => ({
     day,
-    count: open.filter(task => task.dueDate === day).length
+    count: open.filter(task => taskCoversDate(task, day)).length
   }));
 
-  const statusBuckets = ['overdue', 'today', 'future', 'undated', 'completed'].map(key => ({
+  const statusBuckets = ['overdue', 'today', 'future', 'undated', 'completed', 'closed'].map(key => ({
     key,
     count: tasks.filter(task => bucketStatus(task, today) === key).length
   }));
@@ -65,10 +71,14 @@ export function buildReportSummary(data, today) {
   return {
     summary: {
       open: open.length,
-      overdue: open.filter(task => task.dueDate && task.dueDate < today).length,
-      dueToday: open.filter(task => task.dueDate === today).length,
+      overdue: open.filter(task => {
+        const { endDate } = taskDateRange(task);
+        return endDate && endDate < today;
+      }).length,
+      dueToday: open.filter(task => taskCoversDate(task, today)).length,
       completedToday,
-      completedThisWeek
+      completedThisWeek,
+      closed: closed.length
     },
     priorityBreakdown,
     projectBreakdown,
@@ -76,7 +86,10 @@ export function buildReportSummary(data, today) {
     statusBuckets,
     insights: {
       datedOpen: datedOpen.length,
-      upcomingWeek: open.filter(task => task.dueDate && task.dueDate >= today && task.dueDate <= recentEnd).length,
+      upcomingWeek: open.filter(task => {
+        const { startDate, endDate } = taskDateRange(task);
+        return startDate && endDate && startDate <= recentEnd && endDate >= today;
+      }).length,
       inboxOpen: open.filter(task => !task.projectId).length,
       urgentOpen: open.filter(task => task.urgent).length
     }

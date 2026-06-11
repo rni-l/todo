@@ -88,8 +88,8 @@ npm run pm2:stop
 ## Implemented Scope
 
 - Single-user password login
-- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Reports, Projects, Tags, Smart Filters, Completed, Settings
-- Task create/edit/complete/delete with priority, urgent marker, tags, due dates, reminders, recurrence, checklist subtasks, markdown notes, attachments, and continuous-create modal flow
+- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Reports, Projects, Tags, Smart Filters, Completed, Closed, Settings
+- Task create/edit/complete/close/delete with priority, urgent marker, tags, due date ranges, reminder time ranges, recurrence, checklist subtasks, markdown notes, attachments, and continuous-create modal flow
 - Task detail drawer with metadata, markdown preview, checklist subtasks, recurrence, reminders, and attachments
 - Project, tag, and smart filter management
 - Browser notification permission and test notification

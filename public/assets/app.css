@@ -166,6 +166,8 @@ svg { display: block; }
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 18px 14px;
   background: var(--glass);
   border-right: 1px solid var(--border);
@@ -173,6 +175,13 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.sidebar::-webkit-scrollbar { width: 9px; }
+.sidebar::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted) 35%, transparent);
+  background-clip: content-box;
 }
 
 .brand-row {
@@ -644,6 +653,8 @@ svg { display: block; }
 .task-row:hover { background: var(--fg-soft); }
 .task-row.selected { background: color-mix(in oklch, var(--accent) 10%, transparent); }
 .task-row.done .task-title { color: var(--muted); text-decoration: line-through; }
+.task-row.closed .task-title { color: var(--muted); text-decoration: none; }
+.task-row.closed .check { color: transparent; background: color-mix(in oklch, var(--warn) 10%, var(--surface)); border-color: color-mix(in oklch, var(--warn) 42%, var(--border)); }
 .check {
   width: 22px;
   height: 22px;
@@ -702,6 +713,10 @@ svg { display: block; }
 .mini-tag.urgent {
   color: var(--danger);
   background: color-mix(in oklch, var(--danger) 12%, transparent);
+}
+.mini-tag.closed {
+  color: color-mix(in oklch, var(--warn) 82%, black 18%);
+  background: color-mix(in oklch, var(--warn) 15%, transparent);
 }
 .task-actions { display: flex; align-items: center; gap: 6px; }
 

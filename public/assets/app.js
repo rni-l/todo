@@ -1,5 +1,5 @@
 import { appendSubtasks } from './subtasks.js?v=__APP_VERSION__';
-import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView } from './task-date.js?v=__APP_VERSION__';
+import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from './task-date.js?v=__APP_VERSION__';
 import { buildReportSummary } from './reports.js?v=__APP_VERSION__';
 import { preserveTaskCreateContext, resolveTaskModalDefaults } from './task-create.js?v=__APP_VERSION__';
 
@@ -45,6 +45,7 @@ const navItems = [
   { id: 'tags', label: '标签', icon: '#'},
   { id: 'filters', label: '智能过滤器', icon: '⚑'},
   { id: 'completed', label: '已完成', icon: '✓'},
+  { id: 'closed', label: '已关闭', icon: '⊘'},
   { id: 'settings', label: '设置', icon: '⚙', mobile: true, mobileLabel: '更多' }
 ];
 
@@ -63,6 +64,7 @@ const routeTitles = {
   filters: ['FILTERS · 保存视图', '智能过滤器'],
   filter: ['FILTER · 过滤结果', '智能过滤器'],
   completed: ['COMPLETED · 完成记录', '已完成'],
+  closed: ['CLOSED · 取消记录', '已关闭'],
   settings: ['SETTINGS · 单用户配置', '设置']
 };
 
@@ -132,17 +134,29 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.matches('[data-task-start-date-input]')) {
+    setTaskStartDate(target.dataset.taskId, target.value, target);
+  }
   if (target.matches('[data-task-date-input]')) {
     setTaskDate(target.dataset.taskId, target.value, target);
   }
   if (target.matches('[data-task-reminder-time]')) {
     setTaskReminder(target.dataset.taskId, target.value);
   }
+  if (target.matches('[data-task-reminder-end-time]')) {
+    setTaskReminderEnd(target.dataset.taskId, target.value);
+  }
+  if (target.matches('[data-form-start-date-input]')) {
+    setFormStartDate(target.closest('form'), target.value);
+  }
   if (target.matches('[data-form-date-input]')) {
     setFormDate(target.closest('form'), target.value);
   }
   if (target.matches('[data-form-reminder-time]')) {
     setFormReminder(target.closest('form'), target.value);
+  }
+  if (target.matches('[data-form-reminder-end-time]')) {
+    setFormReminderEnd(target.closest('form'), target.value);
   }
   if (target.matches('[data-subtask-title]')) {
     updateSubtaskTitle(target.dataset.taskId, target.dataset.subtaskId, target.value);
@@ -202,7 +216,7 @@ document.addEventListener('drop', event => {
   zone.classList.remove('drag-over');
   const taskId = event.dataTransfer?.getData('text/task-id');
   if (!taskId) return;
-  if (zone.dataset.dropDate !== undefined) updateTask(taskId, { dueDate: zone.dataset.dropDate || null });
+  if (zone.dataset.dropDate !== undefined) updateTask(taskId, { startDate: null, dueDate: zone.dataset.dropDate || null });
   if (zone.dataset.dropSection !== undefined) {
     updateTask(taskId, {
       projectId: zone.dataset.dropProject || null,
@@ -269,7 +283,7 @@ async function loadData() {
   state.loginError = '';
   ensureCalendarSelectedDate();
   if (!state.selectedTaskId) {
-    const first = openTasks().find(task => task.dueDate === todayISO()) || openTasks()[0];
+    const first = openTasks().find(task => taskCoversDate(task, todayISO())) || openTasks()[0];
     state.selectedTaskId = first?.id || null;
   }
   applyTheme(state.data.settings.theme);
@@ -392,13 +406,17 @@ function sidebar() {
       <button class="primary-add" type="button" data-action="open-task-modal">+ 新建任务</button>
       <nav class="nav-block" aria-label="主要视图">
         <div class="nav-heading">主要视图</div>
-        ${navItems.slice(0, 6).map(item => navButton(item, counts[item.id])).join('')}
+        ${['today', 'inbox', 'upcoming', 'recent', 'calendar', 'matrix', 'reports'].map(id => {
+          const item = navItems.find(entry => entry.id === id);
+          return navButton(item, counts[item.id]);
+        }).join('')}
       </nav>
       <nav class="nav-block" aria-label="组织">
         <div class="nav-heading">组织</div>
         ${navButton(navItems.find(item => item.id === 'tags'), counts.tags)}
         ${navButton(navItems.find(item => item.id === 'filters'), counts.filters)}
         ${navButton(navItems.find(item => item.id === 'completed'), counts.completed)}
+        ${navButton(navItems.find(item => item.id === 'closed'), counts.closed)}
       </nav>
       <nav class="nav-block" aria-label="项目">
         <div class="nav-heading">项目</div>
@@ -453,7 +471,7 @@ function mobileBottom() {
   return `
     <nav class="mobile-bottom" aria-label="移动端导航">
       ${navItems.filter(item => item.mobile).map(item => {
-        const active = state.route.name === item.id || (item.id === 'projects' && state.route.name === 'project') || (item.id === 'settings' && ['settings', 'tags', 'filters', 'completed', 'tag', 'filter'].includes(state.route.name));
+        const active = state.route.name === item.id || (item.id === 'projects' && state.route.name === 'project') || (item.id === 'settings' && ['settings', 'tags', 'filters', 'completed', 'closed', 'tag', 'filter'].includes(state.route.name));
         return `<button class="${active ? 'active' : ''}" type="button" data-action="navigate" data-route="${item.id}">${escapeHtml(item.mobileLabel || item.label)}</button>`;
       }).join('')}
     </nav>
@@ -470,9 +488,9 @@ function mainView() {
     quickContext: { dueDate: todayISO() },
     placeholder: '添加一个今天要处理的任务',
     groups: [
-      taskGroup('已逾期', openTasks().filter(task => task.dueDate && task.dueDate < todayISO()), 'danger'),
-      taskGroup('今天', openTasks().filter(task => task.dueDate === todayISO()), 'success'),
-      taskGroup('无提醒时间', openTasks().filter(task => task.dueDate === todayISO() && !task.reminderAt), 'muted'),
+      taskGroup('已逾期', openTasks().filter(task => taskDateRange(task).endDate && taskDateRange(task).endDate < todayISO()), 'danger'),
+      taskGroup('今天', openTasks().filter(task => taskCoversDate(task, todayISO())), 'success'),
+      taskGroup('无提醒时间', openTasks().filter(task => taskCoversDate(task, todayISO()) && !task.reminderAt), 'muted'),
       taskGroup('今日已完成', completedTasks().filter(task => task.completedAt?.slice(0, 10) === todayISO()), 'muted')
     ]
   });
@@ -498,6 +516,7 @@ function mainView() {
   if (route.name === 'filters') return filtersPage();
   if (route.name === 'filter') return filterDetailPage(route.id);
   if (route.name === 'completed') return completedPage();
+  if (route.name === 'closed') return closedPage();
   if (route.name === 'settings') return settingsPage();
   return listPage({
     eyebrow: 'TODAY · 今日执行',
@@ -506,7 +525,7 @@ function mainView() {
     stats: todayStats(),
     quickContext: { dueDate: todayISO() },
     placeholder: '添加任务',
-    groups: [taskGroup('今天', openTasks().filter(task => task.dueDate === todayISO()), 'success')]
+    groups: [taskGroup('今天', openTasks().filter(task => taskCoversDate(task, todayISO())), 'success')]
   });
 }
 
@@ -591,7 +610,7 @@ function taskRow(task) {
   const dateStatus = getTaskDateStatus(task, todayISO());
   const priority = priorityMeta(task.priority);
   return `
-    <button class="task-row ${task.completed ? 'done' : ''} ${task.id === state.selectedTaskId ? 'selected' : ''}" type="button" draggable="true" data-task-id="${task.id}" data-action="select-task">
+    <button class="task-row ${task.completed ? 'done' : ''} ${task.closed ? 'closed' : ''} ${task.id === state.selectedTaskId ? 'selected' : ''}" type="button" draggable="true" data-task-id="${task.id}" data-action="select-task">
       <span class="check" data-action="toggle-task" data-id="${task.id}">✓</span>
       <span class="priority ${priority.key}"></span>
       <span>
@@ -599,7 +618,8 @@ function taskRow(task) {
         <span class="task-meta">
           ${taskDateTag(task, dateStatus)}
           ${priorityBadge(task.priority, { includeNormal: false })}
-          ${task.reminderAt ? `<span class="mini-tag">${escapeHtml(formatTime(task.reminderAt))}</span>` : ''}
+          ${task.closed ? '<span class="mini-tag closed">已关闭</span>' : ''}
+          ${taskReminderTag(task)}
           ${task.urgent ? '<span class="mini-tag urgent">紧急</span>' : ''}
           ${project ? `<span class="mini-tag">${escapeHtml(project.name)}${project.archived ? ' · 已归档' : ''}</span>` : '<span class="mini-tag">收件箱</span>'}
           ${tags.map(tag => `<span class="mini-tag">#${escapeHtml(tag.name)}</span>`).join('')}
@@ -611,6 +631,7 @@ function taskRow(task) {
         <span class="tiny-action" data-action="postpone-task" data-id="${task.id}">明天</span>
         <span class="tiny-action" data-action="toggle-urgent" data-id="${task.id}">${task.urgent ? '取消紧急' : '标紧急'}</span>
         <span class="tiny-action" data-action="cycle-priority" data-id="${task.id}">优先级</span>
+        <span class="tiny-action" data-action="${task.closed ? 'restore-task' : 'close-task'}" data-id="${task.id}">${task.closed ? '恢复' : '关闭'}</span>
       </span>
     </button>
   `;
@@ -621,10 +642,32 @@ function taskDateTag(task, status = getTaskDateStatus(task, todayISO())) {
 }
 
 function taskDateLabel(task, status = getTaskDateStatus(task, todayISO())) {
-  if (status.key === 'overdue') return `已过期 · ${shortDate(status.dueDate)}`;
-  if (status.key === 'today') return '今天';
-  if (status.key === 'future') return shortDate(status.dueDate);
+  const range = taskDateRange(task);
+  const dateText = formatDateRange(range.startDate, range.endDate);
+  if (status.key === 'overdue') return `已过期 · ${dateText}`;
+  if (status.key === 'today') return range.startDate !== range.endDate ? dateText : '今天';
+  if (status.key === 'future') return dateText;
   return '无日期';
+}
+
+function formatDateRange(startDate, endDate) {
+  if (!startDate && !endDate) return '无日期';
+  if (!startDate || startDate === endDate) return shortDate(endDate || startDate);
+  return `${shortDate(startDate)}-${shortDate(endDate)}`;
+}
+
+function taskReminderTag(task) {
+  if (!task.reminderAt) return '';
+  const start = formatTime(task.reminderAt);
+  const end = task.reminderEndAt ? formatTime(task.reminderEndAt) : '';
+  return `<span class="mini-tag">${escapeHtml(end ? `${start}-${end} 提醒` : `${start} 提醒`)}</span>`;
+}
+
+function reminderCoversDate(task, day) {
+  if (!task?.reminderAt || !day) return false;
+  const start = localDateValue(task.reminderAt);
+  const end = task.reminderEndAt ? localDateValue(task.reminderEndAt) : start;
+  return start && end && day >= start && day <= end;
 }
 
 function selectControl(attrs, optionsHtml, options = {}) {
@@ -704,23 +747,33 @@ function tagPicker(selectedIds = [], { mode = 'form', taskId = '' } = {}) {
 
 function schedulePicker({ mode = 'form', task = null, defaults = {}, compact = false } = {}) {
   const isTask = mode === 'task';
+  const startDate = isTask ? task?.startDate || '' : defaults.startDate || '';
   const dueDate = isTask ? task?.dueDate || '' : defaults.dueDate || '';
   const reminderAt = isTask ? task?.reminderAt || '' : defaults.reminderAt || '';
+  const reminderEndAt = isTask ? task?.reminderEndAt || '' : defaults.reminderEndAt || '';
   const taskId = task?.id || '';
   const selectedTime = localTimeValue(reminderAt);
-  const reminderDate = localDateValue(reminderAt);
-  const dateInputAttrs = isTask
+  const selectedEndTime = localTimeValue(reminderEndAt);
+  const startDateInputAttrs = isTask
+    ? `data-task-start-date-input data-task-id="${taskId}"`
+    : 'data-form-start-date-input';
+  const dueDateInputAttrs = isTask
     ? `data-task-date-input data-task-id="${taskId}"`
     : 'data-form-date-input';
-  const timeInputAttrs = isTask
+  const reminderStartInputAttrs = isTask
     ? `data-task-reminder-time data-task-id="${taskId}"`
     : 'data-form-reminder-time';
+  const reminderEndInputAttrs = isTask
+    ? `data-task-reminder-end-time data-task-id="${taskId}"`
+    : 'data-form-reminder-end-time';
   const dateAction = isTask ? 'set-task-date' : 'set-form-date';
   const reminderAction = isTask ? 'set-task-reminder' : 'set-form-reminder';
   const taskIdAttr = isTask ? ` data-task-id="${taskId}"` : '';
   const hiddenInputs = isTask ? '' : `
+    <input type="hidden" name="startDate" value="${escapeHtml(startDate)}" data-form-start-date />
     <input type="hidden" name="dueDate" value="${escapeHtml(dueDate)}" data-form-due-date />
     <input type="hidden" name="reminderAt" value="${escapeHtml(reminderAt)}" data-form-reminder-at />
+    <input type="hidden" name="reminderEndAt" value="${escapeHtml(reminderEndAt)}" data-form-reminder-end-at />
   `;
 
   return `
@@ -728,27 +781,39 @@ function schedulePicker({ mode = 'form', task = null, defaults = {}, compact = f
       ${hiddenInputs}
       <div class="schedule-summary" data-schedule-summary>
         <span>
-          <strong>${escapeHtml(dueDate ? shortDate(dueDate) : '无日期')}</strong>
-          <small>${escapeHtml(reminderAt ? `${formatTime(reminderAt)} 提醒` : '无提醒')}</small>
+          <strong>${escapeHtml(formatDateRange(startDate, dueDate))}</strong>
+          <small>${escapeHtml(reminderAt ? `${formatTime(reminderAt)}${reminderEndAt ? `-${formatTime(reminderEndAt)}` : ''} 提醒` : '无提醒')}</small>
         </span>
       </div>
       <div class="schedule-row">
-        <span class="schedule-label">日期</span>
+        <span class="schedule-label">结束</span>
         <div class="schedule-options">
           ${dateShortcutOptions().map(option => `
             <button class="schedule-option ${dueDate === option.value ? 'active' : ''}" type="button" data-action="${dateAction}" data-value="${option.value}"${taskIdAttr}>${escapeHtml(option.label)}</button>
           `).join('')}
-          <input class="input schedule-custom-input" type="text" value="${escapeHtml(dateInputDisplayValue(dueDate))}" placeholder="24 / 6/24 / 2026-06-24" aria-label="自定义日期" ${dateInputAttrs} />
+          <input class="input schedule-custom-input" type="text" value="${escapeHtml(dateInputDisplayValue(dueDate))}" placeholder="24 / 6/24 / 2026-06-24" aria-label="自定义结束日期" ${dueDateInputAttrs} />
         </div>
       </div>
       <div class="schedule-row">
-        <span class="schedule-label">提醒</span>
+        <span class="schedule-label">开始</span>
+        <div class="schedule-options">
+          <input class="input schedule-custom-input" type="text" value="${escapeHtml(dateInputDisplayValue(startDate))}" placeholder="可选开始日期" aria-label="自定义开始日期" ${startDateInputAttrs} />
+        </div>
+      </div>
+      <div class="schedule-row">
+        <span class="schedule-label">提醒起</span>
         <div class="schedule-options">
           ${reminderTimeOptions().map(option => {
-            const active = option.value ? selectedTime === option.value && (!dueDate || reminderDate === dueDate) : !reminderAt;
+            const active = option.value ? selectedTime === option.value : !reminderAt;
             return `<button class="schedule-option ${active ? 'active' : ''}" type="button" data-action="${reminderAction}" data-time="${option.value}"${taskIdAttr}>${escapeHtml(option.label)}</button>`;
           }).join('')}
-          <input class="input schedule-custom-input time" type="time" value="${escapeHtml(selectedTime)}" aria-label="自定义提醒时间" ${timeInputAttrs} />
+          <input class="input schedule-custom-input time" type="time" value="${escapeHtml(selectedTime)}" aria-label="自定义提醒开始时间" ${reminderStartInputAttrs} />
+        </div>
+      </div>
+      <div class="schedule-row">
+        <span class="schedule-label">提醒止</span>
+        <div class="schedule-options">
+          <input class="input schedule-custom-input time" type="time" value="${escapeHtml(selectedEndTime)}" aria-label="自定义提醒结束时间" ${reminderEndInputAttrs} />
         </div>
       </div>
     </div>
@@ -779,19 +844,28 @@ function upcomingPage() {
     title: '即将到来',
     subtitle: '按日期分组查看未来任务，可拖拽到日历日期或用快捷按钮改期。',
     stats: [
-      { value: tasks.filter(task => task.dueDate > today).length, label: '未来任务' },
-      { value: tasks.filter(task => task.dueDate === todayISO(1)).length, label: '明天' },
-      { value: tasks.filter(task => task.dueDate && task.dueDate > todayISO(1) && task.dueDate <= todayISO(7)).length, label: '本周以后' },
-      { value: tasks.filter(task => !task.dueDate).length, label: '无日期' }
+      { value: tasks.filter(task => taskDateRange(task).endDate > today).length, label: '未来任务' },
+      { value: tasks.filter(task => taskCoversDate(task, todayISO(1))).length, label: '明天' },
+      { value: tasks.filter(task => {
+        const range = taskDateRange(task);
+        return range.startDate && range.startDate <= todayISO(7) && range.endDate >= todayISO(2);
+      }).length, label: '本周以后' },
+      { value: tasks.filter(task => !taskDateRange(task).endDate).length, label: '无日期' }
     ],
     placeholder: '添加一个未来任务',
     quickContext: { dueDate: todayISO(1) },
     groups: [
-      taskGroup('明天', tasks.filter(task => task.dueDate === todayISO(1)), 'success'),
-      taskGroup('本周', tasks.filter(task => task.dueDate && task.dueDate > todayISO(1) && task.dueDate <= todayISO(7)), 'warn'),
-      taskGroup('下周', tasks.filter(task => task.dueDate && task.dueDate > todayISO(7) && task.dueDate <= todayISO(14)), ''),
-      taskGroup('以后', tasks.filter(task => task.dueDate && task.dueDate > todayISO(14)), 'muted'),
-      taskGroup('无日期', tasks.filter(task => !task.dueDate), 'muted')
+      taskGroup('明天', tasks.filter(task => taskCoversDate(task, todayISO(1))), 'success'),
+      taskGroup('本周', tasks.filter(task => {
+        const range = taskDateRange(task);
+        return range.startDate && range.startDate <= todayISO(7) && range.endDate >= todayISO(2);
+      }), 'warn'),
+      taskGroup('下周', tasks.filter(task => {
+        const range = taskDateRange(task);
+        return range.startDate && range.startDate <= todayISO(14) && range.endDate > todayISO(7);
+      }), ''),
+      taskGroup('以后', tasks.filter(task => taskDateRange(task).startDate > todayISO(14)), 'muted'),
+      taskGroup('无日期', tasks.filter(task => !taskDateRange(task).endDate), 'muted')
     ]
   });
 }
@@ -802,8 +876,8 @@ function recentPage() {
   const recentDays = getRecentWindowDays(today);
   const groups = [
     taskGroup('已过期', tasks.filter(task => getTaskDateStatus(task, today).key === 'overdue'), 'danger'),
-    taskGroup('今天', tasks.filter(task => task.dueDate === today), 'success'),
-    ...recentDays.slice(1).map(day => taskGroup(shortDate(day), tasks.filter(task => task.dueDate === day), 'accent'))
+    taskGroup('今天', tasks.filter(task => taskCoversDate(task, today)), 'success'),
+    ...recentDays.slice(1).map(day => taskGroup(shortDate(day), tasks.filter(task => taskCoversDate(task, day)), 'accent'))
   ].filter(group => group.tasks.length);
 
   return listPage({
@@ -813,8 +887,8 @@ function recentPage() {
     stats: [
       { value: tasks.length, label: '窗口任务' },
       { value: tasks.filter(task => getTaskDateStatus(task, today).key === 'overdue').length, label: '已逾期' },
-      { value: tasks.filter(task => task.dueDate === today).length, label: '今天' },
-      { value: tasks.filter(task => task.dueDate && task.dueDate > today).length, label: '未来' }
+      { value: tasks.filter(task => taskCoversDate(task, today)).length, label: '今天' },
+      { value: tasks.filter(task => taskDateRange(task).endDate && taskDateRange(task).endDate > today).length, label: '未来' }
     ],
     placeholder: '添加一个今天要处理的任务',
     quickContext: { dueDate: today },
@@ -856,7 +930,8 @@ function reportsPage() {
       { value: report.summary.open, label: '未完成' },
       { value: report.summary.overdue, label: '已逾期' },
       { value: report.summary.dueToday, label: '今天到期' },
-      { value: report.summary.completedThisWeek, label: '本周完成' }
+      { value: report.summary.completedThisWeek, label: '本周完成' },
+      { value: report.summary.closed, label: '已关闭' }
     ])}
     <section class="reports-grid">
       <section class="group report-hero">
@@ -935,6 +1010,7 @@ function reportsPage() {
               <div class="report-project-meta">
                 <span class="mini-tag">${project.open} 未完成</span>
                 <span class="mini-tag">${project.completed} 已完成</span>
+                <span class="mini-tag">${project.closed} 已关闭</span>
               </div>
             </article>
           `).join('') : emptyCompact('还没有项目数据')}
@@ -989,8 +1065,8 @@ function calendarPage() {
       `
     })}
     ${stats([
-      { value: openTasks().filter(task => task.dueDate).length, label: '有日期任务' },
-      { value: openTasks().filter(task => task.dueDate === todayISO()).length, label: '今天' },
+      { value: openTasks().filter(task => taskDateRange(task).endDate).length, label: '有日期任务' },
+      { value: openTasks().filter(task => taskCoversDate(task, todayISO())).length, label: '今天' },
       { value: openTasks().filter(task => task.reminderAt).length, label: '有提醒' },
       { value: openTasks().filter(task => task.recurrence).length, label: '重复任务' }
     ])}
@@ -1014,7 +1090,7 @@ function calendarPage() {
 }
 
 function calendarDayColumn(day) {
-  const tasks = sortTasks(openTasks().filter(task => task.dueDate === day));
+  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day)));
   const limit = calendarDayLimit();
   const visible = tasks.slice(0, limit);
   return `
@@ -1029,7 +1105,7 @@ function calendarDayColumn(day) {
 
 function calendarMonthCell(dayMeta) {
   const day = dayMeta.date;
-  const tasks = sortTasks(openTasks().filter(task => task.dueDate === day));
+  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day)));
   const visible = tasks.slice(0, calendarDayLimit());
   return `
     <article class="calendar-day ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''} ${dayMeta.inMonth ? '' : 'muted'}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}">
@@ -1046,7 +1122,8 @@ function calendarPill(task) {
     <button class="calendar-pill ${priority.key}" type="button" draggable="true" data-task-id="${task.id}" data-action="select-task">
       <strong>${escapeHtml(task.title)}</strong>
       <span class="task-meta">
-        ${task.reminderAt ? `<span class="mini-tag">${escapeHtml(formatTime(task.reminderAt))} 提醒</span>` : ''}
+        <span class="mini-tag">${escapeHtml(formatDateRange(task.startDate || task.dueDate, task.dueDate || task.startDate))}</span>
+        ${taskReminderTag(task)}
         ${priorityBadge(task.priority)}
       </span>
     </button>
@@ -1086,8 +1163,8 @@ function projectsPage() {
 
 function projectCard(project, { archived = false } = {}) {
   const tasks = state.data.tasks.filter(task => task.projectId === project.id);
-  const open = tasks.filter(task => !task.completed);
-  const todayDue = open.filter(task => task.dueDate === todayISO()).length;
+  const open = tasks.filter(task => !task.completed && !task.closed);
+  const todayDue = open.filter(task => taskCoversDate(task, todayISO())).length;
   const progress = tasks.length ? Math.round((tasks.filter(task => task.completed).length / tasks.length) * 100) : 0;
   return `
     <article class="project-card ${archived ? 'is-archived' : ''}">
@@ -1097,6 +1174,7 @@ function projectCard(project, { archived = false } = {}) {
       ${statsInline([
         { value: open.length, label: '未完成' },
         { value: todayDue, label: '今天到期' },
+        { value: tasks.filter(task => task.closed).length, label: '已关闭' },
         { value: project.sections.length, label: '章节' }
       ])}
       <div class="progress-track" style="--value:${progress}%;"><span></span></div>
@@ -1179,7 +1257,7 @@ function tagDetailPage(id) {
     stats: [
       { value: tagTasks(tag.id).length, label: '未完成' },
       { value: completedTasks().filter(task => task.tags.includes(tag.id)).length, label: '已完成' },
-      { value: tagTasks(tag.id).filter(task => task.dueDate === todayISO()).length, label: '今天' },
+      { value: tagTasks(tag.id).filter(task => taskCoversDate(task, todayISO())).length, label: '今天' },
       { value: tagTasks(tag.id).filter(task => task.priority === 'high').length, label: '高优先级' }
     ],
     placeholder: `添加带 #${tag.name} 标签的任务`,
@@ -1250,6 +1328,27 @@ function completedPage() {
       taskGroup('今天', completed.filter(task => task.completedAt?.slice(0, 10) === todayISO()), 'success'),
       taskGroup('本周', completed.filter(task => task.completedAt?.slice(0, 10) >= todayISO(-7) && task.completedAt?.slice(0, 10) !== todayISO()), ''),
       taskGroup('更早', completed.filter(task => task.completedAt?.slice(0, 10) < todayISO(-7)), 'muted')
+    ]
+  });
+}
+
+function closedPage() {
+  const closed = closedTasks();
+  return listPage({
+    eyebrow: 'CLOSED · 取消记录',
+    title: '已关闭',
+    subtitle: '关闭表示任务不再处理，不等于完成；恢复后任务会回到未完成视图。',
+    stats: [
+      { value: closed.length, label: '已关闭总数' },
+      { value: closed.filter(task => task.closedAt?.slice(0, 10) === todayISO()).length, label: '今天关闭' },
+      { value: closed.filter(task => task.closedAt?.slice(0, 10) >= todayISO(-7)).length, label: '本周关闭' },
+      { value: closed.filter(task => task.recurrence).length, label: '重复任务' }
+    ],
+    placeholder: '添加任务',
+    groups: [
+      taskGroup('今天', closed.filter(task => task.closedAt?.slice(0, 10) === todayISO()), 'warn'),
+      taskGroup('本周', closed.filter(task => task.closedAt?.slice(0, 10) >= todayISO(-7) && task.closedAt?.slice(0, 10) !== todayISO()), ''),
+      taskGroup('更早', closed.filter(task => task.closedAt?.slice(0, 10) < todayISO(-7)), 'muted')
     ]
   });
 }
@@ -1433,6 +1532,7 @@ function drawer(task) {
         <textarea class="drawer-title" data-drawer-field="title">${escapeHtml(task.title)}</textarea>
         <div class="property-grid">
           <label class="property"><span class="property-label">完成</span><span class="property-value"><input type="checkbox" ${task.completed ? 'checked' : ''} data-action="toggle-task" data-id="${task.id}" /> ${task.completed ? '已完成' : '未完成'}</span></label>
+          <div class="property"><span class="property-label">关闭</span><span class="property-value"><button class="switch ${task.closed ? 'on' : ''}" type="button" data-action="${task.closed ? 'restore-task' : 'close-task'}" data-id="${task.id}" aria-label="${task.closed ? '恢复任务' : '关闭任务'}"></button>${task.closed ? '已关闭' : '未关闭'}</span></div>
           <label class="property"><span class="property-label">项目</span><span class="property-value">${selectControl('data-drawer-select="projectId"', `<option value="">收件箱</option>${projectOptionsHtml(task.projectId, { includeArchivedCurrent: true })}`)}</span></label>
           <label class="property"><span class="property-label">章节</span><span class="property-value">${selectControl('data-drawer-select="sectionId"', `<option value="">无章节</option>${(project?.sections || []).map(section => `<option value="${section.id}" ${section.id === task.sectionId ? 'selected' : ''}>${escapeHtml(section.name)}</option>`).join('')}`)}</span></label>
           <div class="property schedule-property"><span class="property-label">日期提醒</span><span class="property-value">${schedulePicker({ mode: 'task', task })}</span></div>
@@ -1647,9 +1747,11 @@ async function handleAction(action, payload, target) {
     if (action === 'select-task') { state.selectedTaskId = payload.taskId || target.closest('[data-task-id]')?.dataset.taskId; state.commandOpen = false; return render(); }
     if (action === 'toggle-task') {
       const task = taskById(payload.id || target.closest('[data-task-id]')?.dataset.taskId);
-      if (task) await updateTask(task.id, { completed: !task.completed });
+      if (task) await updateTask(task.id, { completed: !task.completed, ...(task.completed ? {} : { closed: false }) });
       return;
     }
+    if (action === 'close-task') return closeTask(payload.id);
+    if (action === 'restore-task') return restoreTask(payload.id);
     if (action === 'postpone-task') return updateTask(payload.id, { dueDate: todayISO(1) });
     if (action === 'cycle-priority') return cyclePriority(payload.id);
     if (action === 'toggle-urgent') {
@@ -1731,8 +1833,10 @@ async function handleSubmit(action, form) {
         title: formData.get('title'),
         projectId: formData.get('projectId') || null,
         sectionId: formData.get('sectionId') || null,
+        startDate: formData.get('startDate') || null,
         dueDate: formData.get('dueDate') || null,
         reminderAt: normalizeReminderInput(formData.get('reminderAt')) || null,
+        reminderEndAt: normalizeReminderInput(formData.get('reminderEndAt')) || null,
         priority: formData.get('priority') || 'none',
         urgent: formData.get('urgent') === 'true',
         tags: [...new Set([...selectedTags, ...(tagId ? [tagId] : [])])]
@@ -1876,6 +1980,9 @@ async function updateTask(id, patch, { silent = false } = {}) {
   if (patch.reminderAt && patch.reminderAt.length === 16) {
     patch.reminderAt = new Date(patch.reminderAt).toISOString();
   }
+  if (patch.reminderEndAt && patch.reminderEndAt.length === 16) {
+    patch.reminderEndAt = new Date(patch.reminderEndAt).toISOString();
+  }
   const response = await api(`/api/tasks/${id}`, { method: 'PATCH', body: patch });
   await refreshFromPayload(response);
   if (!silent) showToast('任务已更新');
@@ -1887,6 +1994,16 @@ async function deleteTask(id) {
   if (state.selectedTaskId === id) state.selectedTaskId = null;
   await refreshFromPayload(response);
   showToast('任务已删除');
+}
+
+async function closeTask(id) {
+  if (!id) return;
+  await updateTask(id, { closed: true, completed: false });
+}
+
+async function restoreTask(id) {
+  if (!id) return;
+  await updateTask(id, { closed: false });
 }
 
 async function cyclePriority(id) {
@@ -1906,6 +2023,19 @@ async function toggleTaskTag(taskId, tagId) {
   await updateTask(taskId, { tags: [...current] });
 }
 
+async function setTaskStartDate(taskId, value, input = null) {
+  const task = taskById(taskId);
+  if (!task) return;
+  const parsedDate = parseDateInput(value, task.startDate || task.dueDate || todayISO());
+  if (parsedDate === null) {
+    input?.classList.add('invalid');
+    showToast('日期格式可写 24、6/24 或 2026-06-24');
+    return;
+  }
+  input?.classList.remove('invalid');
+  await updateTask(taskId, { startDate: parsedDate || null });
+}
+
 async function setTaskDate(taskId, value, input = null) {
   const task = taskById(taskId);
   if (!task) return;
@@ -1920,9 +2050,12 @@ async function setTaskDate(taskId, value, input = null) {
   const patch = { dueDate };
   if (!dueDate) {
     patch.reminderAt = null;
+    patch.reminderEndAt = null;
   } else if (task.reminderAt) {
     const time = localTimeValue(task.reminderAt);
     if (time) patch.reminderAt = dateTimeLocalValue(dueDate, time);
+    const endTime = localTimeValue(task.reminderEndAt);
+    if (endTime) patch.reminderEndAt = dateTimeLocalValue(dueDate, endTime);
   }
   await updateTask(taskId, patch);
 }
@@ -1940,11 +2073,46 @@ async function setTaskReminder(taskId, time) {
   await updateTask(taskId, patch);
 }
 
+async function setTaskReminderEnd(taskId, time) {
+  const task = taskById(taskId);
+  if (!task) return;
+  if (!time) {
+    await updateTask(taskId, { reminderEndAt: null });
+    return;
+  }
+  const dueDate = task.dueDate || todayISO();
+  const patch = { reminderEndAt: dateTimeLocalValue(dueDate, time) };
+  if (!task.dueDate) patch.dueDate = dueDate;
+  if (!task.reminderAt) patch.reminderAt = dateTimeLocalValue(dueDate, time);
+  await updateTask(taskId, patch);
+}
+
+function setFormStartDate(form, value) {
+  if (!form) return;
+  const startDateInput = form.querySelector('[data-form-start-date]');
+  if (!startDateInput) return;
+  const customStartInput = form.querySelector('[data-form-start-date-input]');
+  const parsedDate = parseDateInput(value, startDateInput.value || form.querySelector('[data-form-due-date]')?.value || todayISO());
+  if (parsedDate === null) {
+    customStartInput?.classList.add('invalid');
+    showToast('日期格式可写 24、6/24 或 2026-06-24');
+    return;
+  }
+  startDateInput.value = parsedDate || '';
+  if (customStartInput) {
+    customStartInput.value = dateInputDisplayValue(parsedDate || '');
+    customStartInput.classList.remove('invalid');
+  }
+  syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
+}
+
 function setFormDate(form, value) {
   if (!form) return;
+  const startDateInput = form.querySelector('[data-form-start-date]');
   const dueDateInput = form.querySelector('[data-form-due-date]');
   const reminderInput = form.querySelector('[data-form-reminder-at]');
-  if (!dueDateInput || !reminderInput) return;
+  const reminderEndInput = form.querySelector('[data-form-reminder-end-at]');
+  if (!dueDateInput || !reminderInput || !reminderEndInput) return;
   const customDateInput = form.querySelector('[data-form-date-input]');
   const parsedDate = parseDateInput(value, dueDateInput.value || todayISO());
   if (parsedDate === null) {
@@ -1954,6 +2122,7 @@ function setFormDate(form, value) {
   }
   const dueDate = parsedDate || '';
   const currentTime = localTimeValue(reminderInput.value);
+  const currentEndTime = localTimeValue(reminderEndInput.value);
   dueDateInput.value = dueDate;
   if (customDateInput) {
     customDateInput.value = dateInputDisplayValue(dueDate);
@@ -1961,8 +2130,13 @@ function setFormDate(form, value) {
   }
   if (!dueDate) {
     reminderInput.value = '';
+    reminderEndInput.value = '';
   } else if (currentTime) {
     reminderInput.value = reminderISO(dueDate, currentTime);
+    if (currentEndTime) reminderEndInput.value = reminderISO(dueDate, currentEndTime);
+  }
+  if (startDateInput && startDateInput.value && dueDate && startDateInput.value > dueDate) {
+    startDateInput.value = dueDate;
   }
   syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
 }
@@ -1990,29 +2164,55 @@ function setFormReminder(form, time) {
   syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
 }
 
+function setFormReminderEnd(form, time) {
+  if (!form) return;
+  const dueDateInput = form.querySelector('[data-form-due-date]');
+  const reminderInput = form.querySelector('[data-form-reminder-at]');
+  const reminderEndInput = form.querySelector('[data-form-reminder-end-at]');
+  if (!dueDateInput || !reminderInput || !reminderEndInput) return;
+  const reminderTime = time || '';
+  if (!reminderTime) {
+    reminderEndInput.value = '';
+  } else {
+    const dueDate = dueDateInput.value || todayISO();
+    dueDateInput.value = dueDate;
+    reminderEndInput.value = reminderISO(dueDate, reminderTime);
+    if (!reminderInput.value) reminderInput.value = reminderISO(dueDate, reminderTime);
+  }
+  const customTimeInput = form.querySelector('[data-form-reminder-end-time]');
+  if (customTimeInput) customTimeInput.value = reminderTime;
+  syncSchedulePicker(form.querySelector('[data-schedule-picker]'));
+}
+
 function syncSchedulePicker(picker) {
   if (!picker) return;
+  const startDate = picker.querySelector('[data-form-start-date]')?.value || '';
   const dueDate = picker.querySelector('[data-form-due-date]')?.value || '';
   const reminderAt = picker.querySelector('[data-form-reminder-at]')?.value || '';
+  const reminderEndAt = picker.querySelector('[data-form-reminder-end-at]')?.value || '';
   const selectedTime = localTimeValue(reminderAt);
-  const reminderDate = localDateValue(reminderAt);
+  const selectedEndTime = localTimeValue(reminderEndAt);
   const summary = picker.querySelector('[data-schedule-summary]');
   if (summary) {
     const title = summary.querySelector('strong');
     const subtitle = summary.querySelector('small');
-    if (title) title.textContent = dueDate ? shortDate(dueDate) : '无日期';
-    if (subtitle) subtitle.textContent = reminderAt ? `${formatTime(reminderAt)} 提醒` : '无提醒';
+    if (title) title.textContent = formatDateRange(startDate, dueDate);
+    if (subtitle) subtitle.textContent = reminderAt ? `${formatTime(reminderAt)}${reminderEndAt ? `-${formatTime(reminderEndAt)}` : ''} 提醒` : '无提醒';
   }
   picker.querySelectorAll('[data-action="set-form-date"]').forEach(button => {
     button.classList.toggle('active', (button.dataset.value || '') === dueDate);
   });
   picker.querySelectorAll('[data-action="set-form-reminder"]').forEach(button => {
     const value = button.dataset.time || '';
-    const active = value ? selectedTime === value && (!dueDate || reminderDate === dueDate) : !reminderAt;
+    const active = value ? selectedTime === value : !reminderAt;
     button.classList.toggle('active', active);
   });
+  const customStartInput = picker.querySelector('[data-form-start-date-input]');
+  if (customStartInput) customStartInput.value = dateInputDisplayValue(startDate);
   const customDateInput = picker.querySelector('[data-form-date-input]');
   if (customDateInput) customDateInput.value = dateInputDisplayValue(dueDate);
+  const customEndTimeInput = picker.querySelector('[data-form-reminder-end-time]');
+  if (customEndTimeInput) customEndTimeInput.value = selectedEndTime;
 }
 
 async function addSubtask(id, inputTitle) {
@@ -2291,11 +2491,15 @@ function defaultsFromPayload(payload = {}) {
 }
 
 function openTasks() {
-  return state.data.tasks.filter(task => !task.completed);
+  return state.data.tasks.filter(task => !task.completed && !task.closed);
 }
 
 function completedTasks() {
   return state.data.tasks.filter(task => task.completed).sort((a, b) => String(b.completedAt || '').localeCompare(String(a.completedAt || '')));
+}
+
+function closedTasks() {
+  return state.data.tasks.filter(task => task.closed).sort((a, b) => String(b.closedAt || '').localeCompare(String(a.closedAt || '')));
 }
 
 function sortTasks(tasks) {
@@ -2396,10 +2600,10 @@ function matchCondition(task, condition) {
   if (condition.field === 'projectId') return task.projectId === value;
   if (condition.field === 'tag') return task.tags.includes(value);
   if (condition.field === 'due') {
-    if (value === 'today') return task.dueDate === todayISO();
-    if (value === 'upcoming') return task.dueDate && task.dueDate > todayISO();
-    if (value === 'none') return !task.dueDate;
-    return task.dueDate === value;
+    if (value === 'today') return taskCoversDate(task, todayISO());
+    if (value === 'upcoming') return taskDateRange(task).endDate && taskDateRange(task).endDate > todayISO();
+    if (value === 'none') return !taskDateRange(task).endDate;
+    return taskCoversDate(task, value);
   }
   if (condition.field === 'hasAttachment') return Boolean(task.attachments?.length) === Boolean(value);
   if (condition.field === 'hasReminder') return Boolean(task.reminderAt) === Boolean(value);
@@ -2418,9 +2622,9 @@ function groupedFilterTasks(filter) {
   }
   if (filter.group === 'date') {
     return [
-      taskGroup('今天', tasks.filter(task => task.dueDate === todayISO()), 'success'),
-      taskGroup('未来', tasks.filter(task => task.dueDate && task.dueDate > todayISO()), ''),
-      taskGroup('无日期', tasks.filter(task => !task.dueDate), 'muted')
+      taskGroup('今天', tasks.filter(task => taskCoversDate(task, todayISO())), 'success'),
+      taskGroup('未来', tasks.filter(task => taskDateRange(task).endDate && taskDateRange(task).endDate > todayISO()), ''),
+      taskGroup('无日期', tasks.filter(task => !taskDateRange(task).endDate), 'muted')
     ];
   }
   return [taskGroup(filter.name, tasks, 'success')];
@@ -2428,16 +2632,18 @@ function groupedFilterTasks(filter) {
 
 function sidebarCounts() {
   return {
-    today: openTasks().filter(task => task.dueDate === todayISO() || (task.dueDate && task.dueDate < todayISO())).length,
+    today: openTasks().filter(task => taskCoversDate(task, todayISO()) || (taskDateRange(task).endDate && taskDateRange(task).endDate < todayISO())).length,
     inbox: openTasks().filter(task => !task.projectId).length,
-    upcoming: openTasks().filter(task => task.dueDate && task.dueDate > todayISO()).length,
+    upcoming: openTasks().filter(task => taskDateRange(task).endDate && taskDateRange(task).endDate > todayISO()).length,
     recent: recentTasks().length,
-    calendar: openTasks().filter(task => task.dueDate).length,
+    calendar: openTasks().filter(task => taskDateRange(task).endDate).length,
     matrix: openTasks().length,
+    reports: '',
     projects: activeProjects().length,
     tags: state.data.tags.length,
     filters: state.data.filters.length,
-    completed: completedTasks().length
+    completed: completedTasks().length,
+    closed: closedTasks().length
   };
 }
 
@@ -2449,9 +2655,9 @@ function calendarDayLimit() {
 
 function todayStats() {
   return [
-    { value: openTasks().filter(task => task.dueDate === todayISO()).length, label: '今天待办' },
-    { value: openTasks().filter(task => task.dueDate && task.dueDate < todayISO()).length, label: '已逾期' },
-    { value: openTasks().filter(task => task.reminderAt?.slice(0, 10) === todayISO()).length, label: '今日提醒' },
+    { value: openTasks().filter(task => taskCoversDate(task, todayISO())).length, label: '今天待办' },
+    { value: openTasks().filter(task => taskDateRange(task).endDate && taskDateRange(task).endDate < todayISO()).length, label: '已逾期' },
+    { value: openTasks().filter(task => reminderCoversDate(task, todayISO())).length, label: '今日提醒' },
     { value: completedTasks().filter(task => task.completedAt?.slice(0, 10) === todayISO()).length, label: '今日已完成' }
   ];
 }
@@ -2460,8 +2666,8 @@ function inboxStats() {
   const inbox = openTasks().filter(task => !task.projectId);
   return [
     { value: inbox.length, label: '未整理任务' },
-    { value: inbox.filter(task => task.dueDate === todayISO()).length, label: '建议今天处理' },
-    { value: inbox.filter(task => !task.dueDate).length, label: '无日期' },
+    { value: inbox.filter(task => taskCoversDate(task, todayISO())).length, label: '建议今天处理' },
+    { value: inbox.filter(task => !taskDateRange(task).endDate).length, label: '无日期' },
     { value: inbox.filter(task => task.attachments?.length).length, label: '含附件' }
   ];
 }
@@ -2517,7 +2723,8 @@ function ensureCalendarSelectedDate() {
 function taskMetaText(task) {
   const projectRecord = projectById(task.projectId);
   const project = projectRecord ? `${projectRecord.name}${projectRecord.archived ? '（已归档）' : ''}` : '收件箱';
-  const date = task.dueDate ? shortDate(task.dueDate) : '无日期';
+  const range = taskDateRange(task);
+  const date = formatDateRange(range.startDate, range.endDate);
   return `${project} · ${date} · ${priorityLabel(task.priority)}`;
 }
 
