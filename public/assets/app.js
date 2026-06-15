@@ -1,5 +1,5 @@
 import { appendSubtasks } from './subtasks.js?v=__APP_VERSION__';
-import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from './task-date.js?v=__APP_VERSION__';
+import { buildTaskRangeSegments, getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from './task-date.js?v=__APP_VERSION__';
 import { buildReportSummary } from './reports.js?v=__APP_VERSION__';
 import { preserveTaskCreateContext, resolveTaskModalDefaults } from './task-create.js?v=__APP_VERSION__';
 
@@ -14,7 +14,7 @@ const state = {
   selectedTaskId: null,
   loginError: '',
   commandOpen: false,
-  taskModalOpen: false,
+  rightPanelMode: null,
   projectModalOpen: false,
   projectEditingId: null,
   tagModalOpen: false,
@@ -95,7 +95,7 @@ document.addEventListener('keydown', event => {
   }
   if (event.key === 'Escape') {
     closeModals();
-    closeDrawer();
+    closeRightPanel();
     render();
   }
 });
@@ -282,9 +282,10 @@ async function loadData() {
   state.data = await api('/api/data');
   state.loginError = '';
   ensureCalendarSelectedDate();
-  if (!state.selectedTaskId) {
+  if (!state.selectedTaskId && !state.rightPanelMode) {
     const first = openTasks().find(task => taskCoversDate(task, todayISO())) || openTasks()[0];
     state.selectedTaskId = first?.id || null;
+    if (state.selectedTaskId) state.rightPanelMode = 'detail';
   }
   applyTheme(state.data.settings.theme);
   return state.data;
@@ -316,18 +317,23 @@ function render() {
   ensureCalendarSelectedDate();
 
   const selectedTask = taskById(state.selectedTaskId);
-  const hasDrawer = Boolean(selectedTask);
+  if (state.selectedTaskId && !selectedTask) {
+    state.selectedTaskId = null;
+    if (state.rightPanelMode === 'detail') state.rightPanelMode = null;
+  }
+  const hasRightPanel = Boolean(state.rightPanelMode === 'create' || (state.rightPanelMode === 'detail' && selectedTask));
+  const dockRightPanel = Boolean(state.data.settings.dockDrawer);
+  const sidebarCollapsed = Boolean(state.data.settings.sidebarCollapsed);
   app.className = '';
   app.innerHTML = `
     ${mobileTopbar()}
-    <main class="app-shell ${hasDrawer ? 'has-drawer' : ''}">
+    <main class="app-shell ${hasRightPanel ? 'has-right-panel' : ''} ${dockRightPanel ? 'right-panel-docked' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}">
       ${sidebar()}
       <section class="main-pane">${mainView()}</section>
-      ${hasDrawer ? drawer(selectedTask) : ''}
+      ${hasRightPanel ? rightPanel(selectedTask) : ''}
     </main>
     ${mobileBottom()}
     <button class="fab" type="button" data-action="open-task-modal">+</button>
-    ${taskModal()}
     ${projectModal()}
     ${tagModal()}
     ${filterModal()}
@@ -397,13 +403,15 @@ function sidebar() {
   const archived = archivedProjects();
   const showArchived = state.archivedSidebarOpen || (state.route.name === 'project' && projectById(state.route.id)?.archived);
   const pinnedFilters = state.data.filters.filter(filter => filter.pinned).slice(0, 4);
+  const collapsed = Boolean(state.data.settings.sidebarCollapsed);
   return `
     <aside class="sidebar">
       <div class="brand-row">
         <div class="brand-mark">✓</div>
         <div class="brand-copy"><strong>个人 TODO</strong><span>自托管工作台</span></div>
+        <button class="icon-btn sidebar-collapse-btn" type="button" data-action="toggle-sidebar" aria-label="${collapsed ? '展开侧边栏' : '收起侧边栏'}">${collapsed ? '›' : '‹'}</button>
       </div>
-      <button class="primary-add" type="button" data-action="open-task-modal">+ 新建任务</button>
+      <button class="primary-add sidebar-add" type="button" data-action="open-task-modal"><span>+</span><span class="nav-label">新建任务</span></button>
       <nav class="nav-block" aria-label="主要视图">
         <div class="nav-heading">主要视图</div>
         ${['today', 'inbox', 'upcoming', 'recent', 'calendar', 'matrix', 'reports'].map(id => {
@@ -533,8 +541,11 @@ function pageHeader({ eyebrow, title, subtitle, actions = '' }) {
   return `
     <header class="page-header">
       <div>
-        <p class="eyebrow">${escapeHtml(eyebrow)}</p>
-        <h1 class="page-title">${escapeHtml(title)}</h1>
+        <div class="page-title-row">
+          <span class="page-icon">${escapeHtml(routeIcon())}</span>
+          <h1 class="page-title">${escapeHtml(title)}</h1>
+          <span class="page-context">${escapeHtml(eyebrow.split('·')[0].trim())}</span>
+        </div>
         <p class="page-subtitle">${escapeHtml(subtitle)}</p>
       </div>
       <div class="header-actions">
@@ -1072,16 +1083,18 @@ function calendarPage() {
     ])}
     <section class="calendar-shell">
       ${state.calendarMode === 'week' ? `
-        <div class="week-grid">
-          ${days.map(day => calendarDayColumn(day)).join('')}
+        <div class="week-grid calendar-range-grid" style="--range-rows:${calendarRangeRowCount(days)};">
+          ${days.map((day, index) => calendarDayColumn(day, index)).join('')}
+          ${calendarRangeLayer(days)}
         </div>
       ` : `
         <div class="month-grid-shell">
           <div class="month-weekdays">
             ${monthWeekdayLabels().map(label => `<span>${escapeHtml(label)}</span>`).join('')}
           </div>
-          <div class="month-grid">
-            ${monthDays.map(day => calendarMonthCell(day)).join('')}
+          <div class="month-grid calendar-range-grid" style="--range-rows:${calendarRangeRowCount(monthDays.map(day => day.date))};">
+            ${monthDays.map((day, index) => calendarMonthCell(day, index)).join('')}
+            ${calendarRangeLayer(monthDays.map(day => day.date))}
           </div>
         </div>
       `}
@@ -1089,13 +1102,15 @@ function calendarPage() {
   `;
 }
 
-function calendarDayColumn(day) {
-  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day)));
+function calendarDayColumn(day, index) {
+  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day) && !isTaskRange(task)));
   const limit = calendarDayLimit();
   const visible = tasks.slice(0, limit);
+  const count = openTasks().filter(task => taskCoversDate(task, day)).length;
+  const column = index + 1;
   return `
-    <article class="day-column ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}">
-      <div class="day-head"><strong>${escapeHtml(weekdayName(day))}</strong><span>${escapeHtml(shortDate(day))} · ${tasks.length}</span></div>
+    <article class="day-column ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}" style="grid-column:${column};grid-row:1;">
+      <div class="day-head"><strong>${escapeHtml(weekdayName(day))}</strong><span>${escapeHtml(shortDate(day))} · ${count}</span></div>
       ${visible.map(calendarPill).join('')}
       ${tasks.length > visible.length ? `<button class="tiny-action" type="button" data-action="filter-date" data-date="${day}">还有 ${tasks.length - visible.length} 项</button>` : ''}
       <button class="tiny-action" type="button" data-action="open-task-modal" data-due-date="${day}">+ 在这天新建</button>
@@ -1103,17 +1118,75 @@ function calendarDayColumn(day) {
   `;
 }
 
-function calendarMonthCell(dayMeta) {
+function calendarMonthCell(dayMeta, index) {
   const day = dayMeta.date;
-  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day)));
+  const tasks = sortTasks(openTasks().filter(task => taskCoversDate(task, day) && !isTaskRange(task)));
   const visible = tasks.slice(0, calendarDayLimit());
+  const count = openTasks().filter(task => taskCoversDate(task, day)).length;
+  const column = (index % 7) + 1;
+  const row = Math.floor(index / 7) + 1;
   return `
-    <article class="calendar-day ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''} ${dayMeta.inMonth ? '' : 'muted'}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}">
-      <div class="day-head"><strong>${Number(day.slice(8, 10))}</strong><span>${tasks.length}</span></div>
+    <article class="calendar-day ${day === todayISO() ? 'today' : ''} ${day === state.selectedCalendarDate ? 'selected' : ''} ${dayMeta.inMonth ? '' : 'muted'}" data-drop-date="${day}" data-action="select-calendar-date" data-date="${day}" style="grid-column:${column};grid-row:${row};">
+      <div class="day-head"><strong>${Number(day.slice(8, 10))}</strong><span>${count}</span></div>
       ${visible.map(calendarPill).join('')}
       ${tasks.length > visible.length ? `<button class="tiny-action" type="button" data-action="filter-date" data-date="${day}">还有 ${tasks.length - visible.length} 项</button>` : ''}
     </article>
   `;
+}
+
+function calendarRangeLayer(days) {
+  const weekRows = [];
+  for (let index = 0; index < days.length; index += 7) weekRows.push(days.slice(index, index + 7));
+  const limit = calendarDayLimit();
+  return weekRows.map((week, rowIndex) => {
+    const segments = sortCalendarSegments(buildTaskRangeSegments(openTasks().filter(isTaskRange), week));
+    const visible = segments.slice(0, limit);
+    const hidden = Math.max(0, segments.length - visible.length);
+    return `
+      <div class="calendar-range-layer" style="--week-row:${rowIndex + 1};--range-count:${visible.length};">
+        ${visible.map((segment, segmentIndex) => calendarRangeBar(segment, segmentIndex)).join('')}
+        ${hidden ? `<button class="calendar-range-more tiny-action" type="button" data-action="filter-date" data-date="${week[0]}" style="--range-row:${visible.length + 1};">还有 ${hidden} 项范围任务</button>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function calendarRangeBar(segment, index) {
+  const priority = priorityMeta(segment.task.priority);
+  const classes = [
+    'calendar-range-bar',
+    priority.key,
+    segment.continuesBefore ? 'continues-before' : '',
+    segment.continuesAfter ? 'continues-after' : ''
+  ].filter(Boolean).join(' ');
+  return `
+    <button class="${classes}" type="button" draggable="true" data-task-id="${segment.task.id}" data-action="select-task" style="--range-start:${segment.startIndex + 1};--range-span:${segment.span};--range-row:${index + 1};">
+      <span>${segment.continuesBefore ? '‹ ' : ''}${escapeHtml(segment.task.title)}${segment.continuesAfter ? ' ›' : ''}</span>
+      <small>${escapeHtml(formatDateRange(segment.startDate, segment.endDate))}</small>
+    </button>
+  `;
+}
+
+function calendarRangeRowCount(days) {
+  let max = 0;
+  for (let index = 0; index < days.length; index += 7) {
+    const week = days.slice(index, index + 7);
+    max = Math.max(max, Math.min(calendarDayLimit(), buildTaskRangeSegments(openTasks().filter(isTaskRange), week).length));
+  }
+  return max;
+}
+
+function sortCalendarSegments(segments) {
+  return [...segments].sort((a, b) => {
+    if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
+    if (a.span !== b.span) return b.span - a.span;
+    return priorityMeta(b.task.priority).weight - priorityMeta(a.task.priority).weight;
+  });
+}
+
+function isTaskRange(task) {
+  const range = taskDateRange(task);
+  return Boolean(range.startDate && range.endDate && range.startDate !== range.endDate);
 }
 
 function calendarPill(task) {
@@ -1413,6 +1486,7 @@ function settingsPanel() {
         </div>
         <div class="field"><label>日历每日显示条数</label>${selectControl('data-setting-select="calendarDayLimit"', `${[1, 2, 3, 4, 5, 6].map(value => `<option value="${value}" ${calendarDayLimit() === value ? 'selected' : ''}>${value} 条</option>`).join('')}`)}</div>
         ${switchRow('紧凑任务行', '桌面任务行更紧凑，适合高任务量。', 'compactRows', state.data.settings.compactRows)}
+        ${switchRow('收起左侧边栏', '桌面端只保留图标导航，给任务和日历留出更多宽度。', 'sidebarCollapsed', state.data.settings.sidebarCollapsed)}
         ${switchRow('固定右侧详情抽屉', '宽屏时保持详情常驻，窄屏自动切为覆盖层。', 'dockDrawer', state.data.settings.dockDrawer)}
         <div class="panel" style="background:var(--accent-quiet);"><div class="panel-title">预览</div>${state.data.tasks[0] ? taskRow(openTasks()[0] || state.data.tasks[0]) : '<p class="page-subtitle" style="margin:0;">暂无任务可预览。</p>'}</div>
       </div>
@@ -1519,13 +1593,20 @@ function importPreviewHtml() {
   `;
 }
 
-function drawer(task) {
+function rightPanel(task) {
+  if (state.rightPanelMode === 'create') return createTaskPanel();
+  if (task) return taskDetailPanel(task);
+  return '';
+}
+
+function taskDetailPanel(task) {
   const project = projectById(task.projectId);
   return `
-    <aside class="drawer open">
+    <aside class="right-panel drawer open" data-panel-mode="detail">
       <div class="drawer-toolbar">
-        <button class="icon-btn" type="button" data-action="close-drawer">×</button>
+        <button class="icon-btn" type="button" data-action="close-right-panel">×</button>
         <span class="save-state">${escapeHtml(state.saveState)}</span>
+        <button class="icon-btn ${state.data.settings.dockDrawer ? 'active' : ''}" type="button" data-action="toggle-setting" data-key="dockDrawer" aria-label="${state.data.settings.dockDrawer ? '取消固定右侧面板' : '固定右侧面板'}">⌖</button>
         <button class="icon-btn" type="button" data-action="delete-task" data-id="${task.id}">⌫</button>
       </div>
       <div class="drawer-content">
@@ -1570,24 +1651,37 @@ function drawer(task) {
   `;
 }
 
-function taskModal() {
+function createTaskPanel() {
   const defaults = taskModalDefaults();
-  return modal('taskModalOpen', '新建任务', `
-    <form class="dialog-body" data-submit="create-task">
-      <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" value="${escapeHtml(defaults.title || '')}" /></div>
-      <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${projectOptionsHtml(defaults.projectId)}`)}</div>
-      <div class="field"><label>日期和提醒</label>${schedulePicker({ mode: 'form', defaults })}</div>
-      <div class="field"><label>优先级</label>${selectControl('name="priority"', priorityOptionsHtml(defaults.priority || 'none'))}</div>
-      <div class="field"><label>标签</label>${tagPicker(defaults.tags?.length ? defaults.tags : (defaults.tagId ? [defaults.tagId] : []), { mode: 'form' })}</div>
-      <label class="check-field"><input type="checkbox" name="urgent" value="true" ${defaults.urgent ? 'checked' : ''} /><span>标记为紧急</span></label>
-      <input type="hidden" name="sectionId" value="${escapeHtml(defaults.sectionId || '')}" />
-      <input type="hidden" name="tagId" value="${escapeHtml(defaults.tagId || '')}" />
-      <div class="dialog-actions">
-        <button class="soft-button" type="submit" name="submitMode" value="continue">创建并继续</button>
-        <button class="primary-add" type="submit" name="submitMode" value="close">创建后关闭</button>
+  return `
+    <aside class="right-panel drawer open create-panel" data-panel-mode="create">
+      <div class="drawer-toolbar">
+        <button class="icon-btn" type="button" data-action="close-right-panel">×</button>
+        <span class="save-state">新建任务</span>
+        <button class="icon-btn ${state.data.settings.dockDrawer ? 'active' : ''}" type="button" data-action="toggle-setting" data-key="dockDrawer" aria-label="${state.data.settings.dockDrawer ? '取消固定右侧面板' : '固定右侧面板'}">⌖</button>
       </div>
-    </form>
-  `, 'task-modal');
+      <div class="drawer-content">
+        <div class="panel-intro">
+          <h2>新建任务</h2>
+          <p>使用当前视图上下文创建任务，连续新建会保留日期、项目和标签。</p>
+        </div>
+        <form class="dialog-body panel-form" data-submit="create-task">
+          <div class="field"><label>任务标题</label><input class="input" name="title" required autofocus placeholder="例如：整理今天的任务" value="${escapeHtml(defaults.title || '')}" /></div>
+          <div class="field"><label>项目</label>${selectControl('name="projectId"', `<option value="" ${!defaults.projectId ? 'selected' : ''}>收件箱</option>${projectOptionsHtml(defaults.projectId)}`)}</div>
+          <div class="field"><label>日期和提醒</label>${schedulePicker({ mode: 'form', defaults })}</div>
+          <div class="field"><label>优先级</label>${selectControl('name="priority"', priorityOptionsHtml(defaults.priority || 'none'))}</div>
+          <div class="field"><label>标签</label>${tagPicker(defaults.tags?.length ? defaults.tags : (defaults.tagId ? [defaults.tagId] : []), { mode: 'form' })}</div>
+          <label class="check-field"><input type="checkbox" name="urgent" value="true" ${defaults.urgent ? 'checked' : ''} /><span>标记为紧急</span></label>
+          <input type="hidden" name="sectionId" value="${escapeHtml(defaults.sectionId || '')}" />
+          <input type="hidden" name="tagId" value="${escapeHtml(defaults.tagId || '')}" />
+          <div class="dialog-actions">
+            <button class="soft-button" type="submit" name="submitMode" value="continue">创建并继续</button>
+            <button class="primary-add" type="submit" name="submitMode" value="close">创建后关闭</button>
+          </div>
+        </form>
+      </div>
+    </aside>
+  `;
 }
 
 function checklistPanel(task) {
@@ -1736,15 +1830,21 @@ async function handleAction(action, payload, target) {
     if (action === 'open-task-modal') {
       if (payload.dueDate || payload.routeDate) state.selectedCalendarDate = payload.dueDate || payload.routeDate;
       state.taskModalDefaults = defaultsFromPayload(payload);
-      state.taskModalOpen = true;
+      state.rightPanelMode = 'create';
+      state.selectedTaskId = null;
       return render();
     }
     if (action === 'open-project-modal') { state.projectEditingId = payload.id || null; state.projectModalOpen = true; return render(); }
     if (action === 'open-tag-modal') { state.tagModalOpen = true; return render(); }
     if (action === 'open-filter-modal') { state.filterEditingId = null; state.filterModalOpen = true; return render(); }
     if (action === 'edit-filter') { state.filterEditingId = payload.id || null; state.filterModalOpen = true; return render(); }
-    if (action === 'close-drawer') { closeDrawer(); return render(); }
-    if (action === 'select-task') { state.selectedTaskId = payload.taskId || target.closest('[data-task-id]')?.dataset.taskId; state.commandOpen = false; return render(); }
+    if (action === 'close-drawer' || action === 'close-right-panel') { closeRightPanel(); return render(); }
+    if (action === 'select-task') {
+      state.selectedTaskId = payload.taskId || target.closest('[data-task-id]')?.dataset.taskId;
+      state.rightPanelMode = 'detail';
+      state.commandOpen = false;
+      return render();
+    }
     if (action === 'toggle-task') {
       const task = taskById(payload.id || target.closest('[data-task-id]')?.dataset.taskId);
       if (task) await updateTask(task.id, { completed: !task.completed, ...(task.completed ? {} : { closed: false }) });
@@ -1785,6 +1885,7 @@ async function handleAction(action, payload, target) {
     if (action === 'filter-date') { showToast(`已聚焦 ${payload.date}`); return; }
     if (action === 'settings-panel') { state.settingsPanel = payload.panel; return render(); }
     if (action === 'theme') return updateSettings({ theme: payload.theme });
+    if (action === 'toggle-sidebar') return updateSettings({ sidebarCollapsed: !state.data.settings.sidebarCollapsed });
     if (action === 'toggle-setting') return updateSettings({ [payload.key]: !state.data.settings[payload.key] });
     if (action === 'request-notifications') return requestNotifications();
     if (action === 'test-notification') return testNotification();
@@ -1850,10 +1951,11 @@ async function handleSubmit(action, form) {
           tagId: tagId || '',
           tags: payload.tags
         });
-        state.taskModalOpen = true;
+        state.rightPanelMode = 'create';
+        state.selectedTaskId = null;
         showToast('任务已添加，继续新建');
       } else {
-        closeModals();
+        closeRightPanel();
         showToast('任务已添加');
       }
       render();
@@ -2438,13 +2540,18 @@ async function deleteFilter(id) {
   await refreshFromPayload(response);
 }
 
-function closeDrawer() {
+function closeRightPanel() {
   state.selectedTaskId = null;
+  state.rightPanelMode = null;
+  state.taskModalDefaults = {};
+}
+
+function closeDrawer() {
+  closeRightPanel();
 }
 
 function closeModals() {
   state.commandOpen = false;
-  state.taskModalOpen = false;
   state.projectModalOpen = false;
   state.projectEditingId = null;
   state.tagModalOpen = false;

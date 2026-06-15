@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from '../public/assets/task-date.js';
+import { buildTaskRangeSegments, getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from '../public/assets/task-date.js';
 
 const TODAY = '2026-06-08';
 
@@ -63,4 +63,31 @@ test('shouldShowInRecentView excludes undated, completed, and closed tasks', () 
   assert.equal(shouldShowInRecentView({ dueDate: null, completed: false }, TODAY), false);
   assert.equal(shouldShowInRecentView({ dueDate: TODAY, completed: true }, TODAY), false);
   assert.equal(shouldShowInRecentView({ dueDate: TODAY, completed: false, closed: true }, TODAY), false);
+});
+
+test('buildTaskRangeSegments clips multi-day tasks to visible days', () => {
+  const days = ['2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-13', '2026-06-14'];
+  const [inside, clippedStart, clippedEnd] = buildTaskRangeSegments([
+    { id: 'inside', startDate: '2026-06-09', dueDate: '2026-06-11' },
+    { id: 'clipped-start', startDate: '2026-06-06', dueDate: '2026-06-09' },
+    { id: 'clipped-end', startDate: '2026-06-13', dueDate: '2026-06-16' },
+    { id: 'outside', startDate: '2026-06-15', dueDate: '2026-06-16' }
+  ], days);
+
+  assert.equal(inside.task.id, 'inside');
+  assert.equal(inside.startIndex, 1);
+  assert.equal(inside.endIndex, 3);
+  assert.equal(inside.span, 3);
+  assert.equal(inside.continuesBefore, false);
+  assert.equal(inside.continuesAfter, false);
+
+  assert.equal(clippedStart.task.id, 'clipped-start');
+  assert.equal(clippedStart.startIndex, 0);
+  assert.equal(clippedStart.endIndex, 1);
+  assert.equal(clippedStart.continuesBefore, true);
+
+  assert.equal(clippedEnd.task.id, 'clipped-end');
+  assert.equal(clippedEnd.startIndex, 5);
+  assert.equal(clippedEnd.endIndex, 6);
+  assert.equal(clippedEnd.continuesAfter, true);
 });

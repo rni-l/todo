@@ -70,6 +70,7 @@ function normalizeSettings(input = {}, existing = {}) {
     defaultReminderTime: input.defaultReminderTime ?? existing.defaultReminderTime ?? '09:00',
     notificationsEnabled: Boolean(input.notificationsEnabled ?? existing.notificationsEnabled ?? false),
     dockDrawer: Boolean(input.dockDrawer ?? existing.dockDrawer ?? true),
+    sidebarCollapsed: Boolean(input.sidebarCollapsed ?? existing.sidebarCollapsed ?? false),
     compactRows: Boolean(input.compactRows ?? existing.compactRows ?? false),
     pwaInstallDismissed: Boolean(input.pwaInstallDismissed ?? existing.pwaInstallDismissed ?? false),
     calendarDayLimit: normalizeCalendarDayLimit(input.calendarDayLimit ?? existing.calendarDayLimit)
@@ -157,6 +158,7 @@ function seedData() {
       defaultReminderTime: '09:00',
       notificationsEnabled: false,
       dockDrawer: true,
+      sidebarCollapsed: false,
       compactRows: false,
       pwaInstallDismissed: false,
       calendarDayLimit: DEFAULT_CALENDAR_DAY_LIMIT

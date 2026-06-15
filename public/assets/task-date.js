@@ -40,3 +40,36 @@ export function shouldShowInRecentView(task, today) {
   const recentWindow = getRecentWindowDays(today);
   return startDate <= recentWindow[recentWindow.length - 1] && endDate >= today;
 }
+
+export function buildTaskRangeSegments(tasks = [], days = []) {
+  const dayIndex = new Map(days.map((day, index) => [day, index]));
+  const firstDay = days[0];
+  const lastDay = days[days.length - 1];
+  if (!firstDay || !lastDay) return [];
+
+  return tasks
+    .map(task => {
+      const { startDate, endDate } = taskDateRange(task);
+      if (!startDate || !endDate) return null;
+      if (endDate < firstDay || startDate > lastDay) return null;
+      const visibleStart = startDate < firstDay ? firstDay : startDate;
+      const visibleEnd = endDate > lastDay ? lastDay : endDate;
+      const startIndex = dayIndex.get(visibleStart);
+      const endIndex = dayIndex.get(visibleEnd);
+      if (startIndex === undefined || endIndex === undefined) return null;
+      return {
+        task,
+        startDate,
+        endDate,
+        visibleStart,
+        visibleEnd,
+        startIndex,
+        endIndex,
+        span: endIndex - startIndex + 1,
+        isRange: startDate !== endDate,
+        continuesBefore: startDate < visibleStart,
+        continuesAfter: endDate > visibleEnd
+      };
+    })
+    .filter(Boolean);
+}

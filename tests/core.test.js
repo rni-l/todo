@@ -109,13 +109,15 @@ test('task urgent flag defaults false and can be updated', async () => {
   assert.equal(cleared.urgent, false);
 });
 
-test('legacy payloads backfill calendar day limit and subtask metadata', async () => {
+test('legacy payloads backfill layout settings, calendar day limit, and subtask metadata', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });
   await store.init();
   const filePath = path.join(dataDir, 'todo-data.json');
   const payload = JSON.parse(await fs.readFile(filePath, 'utf8'));
   delete payload.settings.calendarDayLimit;
+  delete payload.settings.sidebarCollapsed;
+  delete payload.settings.dockDrawer;
   payload.tasks = [
     {
       ...payload.tasks[0],
@@ -128,6 +130,8 @@ test('legacy payloads backfill calendar day limit and subtask metadata', async (
   await migrated.init();
 
   assert.equal(migrated.data.settings.calendarDayLimit, 3);
+  assert.equal(migrated.data.settings.sidebarCollapsed, false);
+  assert.equal(migrated.data.settings.dockDrawer, true);
   assert.deepEqual(migrated.data.tasks[0].subtasks[0], {
     id: 'sub_legacy',
     title: 'Legacy subtask',
