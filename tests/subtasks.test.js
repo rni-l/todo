@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendSubtasks, parseSubtaskLines } from '../public/assets/subtasks.js';
+import { appendSubtasks, parseSubtaskLines } from '../src/client/lib/subtasks.ts';
 
 test('parseSubtaskLines returns one title for single-line input', () => {
   assert.deepEqual(parseSubtaskLines('Review notes'), ['Review notes']);

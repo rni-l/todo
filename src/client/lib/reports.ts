@@ -1,12 +1,13 @@
-import { getRecentWindowDays, getTaskDateStatus, taskCoversDate, taskDateRange } from './task-date.js';
+import type { PublicData, Task } from '../types.ts';
+import { getRecentWindowDays, getTaskDateStatus, taskCoversDate, taskDateRange } from './dates.ts';
 
-function bucketStatus(task, today) {
+function bucketStatus(task: Partial<Task>, today: string) {
   if (task.closed) return 'closed';
   if (task.completed) return 'completed';
   return getTaskDateStatus(task, today).key;
 }
 
-function startOfWeek(today) {
+function startOfWeek(today: string) {
   const date = new Date(`${today}T12:00:00`);
   const day = date.getDay();
   const diff = day === 0 ? -6 : 1 - day;
@@ -14,7 +15,7 @@ function startOfWeek(today) {
   return date.toISOString().slice(0, 10);
 }
 
-export function buildReportSummary(data, today) {
+export function buildReportSummary(data: Pick<PublicData, 'tasks' | 'projects'> | null | undefined, today: string) {
   const tasks = data?.tasks || [];
   const projects = data?.projects || [];
   const open = tasks.filter(task => !task.completed && !task.closed);

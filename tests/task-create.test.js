@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { preserveTaskCreateContext, resolveTaskModalDefaults } from '../public/assets/task-create.js';
+import { preserveTaskCreateContext, resolveTaskModalDefaults } from '../src/client/lib/taskCreate.ts';
 
 test('calendar route defaults new-task date to selected calendar day', () => {
   assert.deepEqual(

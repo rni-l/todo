@@ -1,11 +1,13 @@
-export function parseSubtaskLines(input) {
+import type { Subtask } from '../types.ts';
+
+export function parseSubtaskLines(input: unknown) {
   return String(input ?? '')
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
 }
 
-export function appendSubtasks(existingSubtasks = [], input) {
+export function appendSubtasks(existingSubtasks: Subtask[] = [], input: unknown) {
   const titles = parseSubtaskLines(input);
   return {
     titles,
@@ -17,7 +19,7 @@ export function appendSubtasks(existingSubtasks = [], input) {
         completed: false,
         order: existingSubtasks.length + index + 1,
         dueDate: null,
-        priority: 'none'
+        priority: 'none' as const
       }))
     ]
   };

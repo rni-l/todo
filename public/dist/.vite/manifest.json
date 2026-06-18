@@ -1,0 +1,11 @@
+{
+  "src/client/main.tsx": {
+    "file": "assets/app.js",
+    "name": "main",
+    "src": "src/client/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/app.css"
+    ]
+  }
+}

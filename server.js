@@ -36,8 +36,7 @@ const mimeTypes = new Map([
 
 const templatedFiles = new Set([
   path.join(publicDir, 'index.html'),
-  path.join(publicDir, 'sw.js'),
-  path.join(publicDir, 'assets', 'app.js')
+  path.join(publicDir, 'sw.js')
 ]);
 
 function parseCookies(cookieHeader = '') {

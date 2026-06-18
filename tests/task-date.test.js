@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTaskRangeSegments, getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from '../public/assets/task-date.js';
+import { buildTaskRangeSegments, getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from '../src/client/lib/dates.ts';
 
 const TODAY = '2026-06-08';
 

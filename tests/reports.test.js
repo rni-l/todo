@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReportSummary } from '../public/assets/reports.js';
+import { buildReportSummary } from '../src/client/lib/reports.ts';
 
 const TODAY = '2026-06-09';
 
