@@ -37,6 +37,7 @@ export function settingsPanelLabel(id: string) {
     notifications: '通知',
     data: '数据导入导出',
     attachments: '附件导入导出',
+    uploadUrl: '上传 URL 配置',
     about: '应用信息'
   }[id] || id;
 }

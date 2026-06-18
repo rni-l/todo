@@ -7,6 +7,11 @@ const DATA_VERSION = 1;
 const DEFAULT_USERNAME = process.env.TODO_USERNAME || 'self-hosted-user';
 const DEFAULT_PASSWORD = process.env.TODO_PASSWORD || 'todo123456';
 const DEFAULT_CALENDAR_DAY_LIMIT = 3;
+const DEFAULT_UPLOAD_URL_CONFIG = Object.freeze({
+  accessPrefix: '/uploads',
+  baseUrl: '',
+  paramKey: 'path'
+});
 
 export function createId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -25,6 +30,58 @@ export function normalizeFileName(name) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160) || 'file';
+}
+
+export function normalizeAccessPrefix(value) {
+  const raw = String(value || DEFAULT_UPLOAD_URL_CONFIG.accessPrefix).trim() || DEFAULT_UPLOAD_URL_CONFIG.accessPrefix;
+  const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
+  const normalized = withSlash.replace(/\/+/g, '/').replace(/\/$/, '') || DEFAULT_UPLOAD_URL_CONFIG.accessPrefix;
+  if (normalized === '/api' || normalized.startsWith('/api/')) return DEFAULT_UPLOAD_URL_CONFIG.accessPrefix;
+  if (normalized === '/prototype' || normalized.startsWith('/prototype/')) return DEFAULT_UPLOAD_URL_CONFIG.accessPrefix;
+  if (normalized === '/assets' || normalized === '/dist') return DEFAULT_UPLOAD_URL_CONFIG.accessPrefix;
+  return normalized;
+}
+
+function normalizeUploadUrlConfig(input = {}, existing = {}) {
+  return {
+    accessPrefix: normalizeAccessPrefix(input.accessPrefix ?? existing.accessPrefix ?? DEFAULT_UPLOAD_URL_CONFIG.accessPrefix),
+    baseUrl: String(input.baseUrl ?? existing.baseUrl ?? DEFAULT_UPLOAD_URL_CONFIG.baseUrl).trim(),
+    paramKey: String(input.paramKey ?? existing.paramKey ?? DEFAULT_UPLOAD_URL_CONFIG.paramKey).trim() || DEFAULT_UPLOAD_URL_CONFIG.paramKey
+  };
+}
+
+function normalizeRelativeUploadPath(value = '') {
+  const normalized = path.posix.normalize(String(value || '').replaceAll('\\', '/')).replace(/^\/+/, '');
+  if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized === '..') return null;
+  return normalized;
+}
+
+function storagePathFromAccessPath(value = '', accessPrefix = DEFAULT_UPLOAD_URL_CONFIG.accessPrefix) {
+  let raw = String(value || '').replaceAll('\\', '/');
+  if (raw === accessPrefix || raw.startsWith(`${accessPrefix}/`)) {
+    raw = raw.slice(accessPrefix.length).replace(/^\/+/, '');
+  } else {
+    raw = raw.replace(/^\/+/, '');
+    const parts = raw.split('/').filter(Boolean);
+    if (parts.length >= 5 && !/^\d{2}$/.test(parts[0]) && /^\d{2}$/.test(parts[1]) && /^\d{2}$/.test(parts[2]) && /^\d{2}$/.test(parts[3])) {
+      raw = parts.slice(1).join('/');
+    }
+  }
+  return normalizeRelativeUploadPath(raw);
+}
+
+function uploadDateParts(date = new Date()) {
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return [year, month, day];
+}
+
+function appendDuplicateSuffix(fileName, index) {
+  if (!index) return fileName;
+  const extension = path.extname(fileName);
+  const base = extension ? fileName.slice(0, -extension.length) : fileName;
+  return `${base}-${index}${extension}`;
 }
 
 function nowISO() {
@@ -73,7 +130,8 @@ function normalizeSettings(input = {}, existing = {}) {
     sidebarCollapsed: Boolean(input.sidebarCollapsed ?? existing.sidebarCollapsed ?? false),
     compactRows: Boolean(input.compactRows ?? existing.compactRows ?? false),
     pwaInstallDismissed: Boolean(input.pwaInstallDismissed ?? existing.pwaInstallDismissed ?? false),
-    calendarDayLimit: normalizeCalendarDayLimit(input.calendarDayLimit ?? existing.calendarDayLimit)
+    calendarDayLimit: normalizeCalendarDayLimit(input.calendarDayLimit ?? existing.calendarDayLimit),
+    uploadUrlConfig: normalizeUploadUrlConfig(input.uploadUrlConfig, existing.uploadUrlConfig)
   };
 }
 
@@ -161,7 +219,8 @@ function seedData() {
       sidebarCollapsed: false,
       compactRows: false,
       pwaInstallDismissed: false,
-      calendarDayLimit: DEFAULT_CALENDAR_DAY_LIMIT
+      calendarDayLimit: DEFAULT_CALENDAR_DAY_LIMIT,
+      uploadUrlConfig: { ...DEFAULT_UPLOAD_URL_CONFIG }
     },
     projects,
     tags,
@@ -360,7 +419,17 @@ export class TodoStore {
       projects: this.data.projects,
       tags: this.data.tags,
       filters: this.data.filters,
-      tasks: this.sortedTasks(this.data.tasks)
+      tasks: this.sortedTasks(this.data.tasks).map(task => this.publicTask(task))
+    };
+  }
+
+  publicTask(task) {
+    return {
+      ...task,
+      attachments: (task.attachments || []).map(attachment => ({
+        ...attachment,
+        relativePath: this.attachmentAccessPath(attachment) || attachment.relativePath || ''
+      }))
     };
   }
 
@@ -565,14 +634,87 @@ export class TodoStore {
     return null;
   }
 
+  uploadAccessPath(relativePath) {
+    const cleanRelative = normalizeRelativeUploadPath(relativePath);
+    if (!cleanRelative) return null;
+    return `${this.data.settings.uploadUrlConfig.accessPrefix}/${cleanRelative}`;
+  }
+
+  attachmentStoragePath(attachment) {
+    const accessPrefix = this.data.settings.uploadUrlConfig.accessPrefix;
+    return storagePathFromAccessPath(attachment.storageName || '', accessPrefix)
+      || storagePathFromAccessPath(attachment.relativePath || '', accessPrefix);
+  }
+
+  attachmentAccessPath(attachment) {
+    const storedPath = this.attachmentStoragePath(attachment);
+    return storedPath ? this.uploadAccessPath(storedPath) : null;
+  }
+
+  async resolveAttachmentFilePath(attachment) {
+    const storedPath = this.attachmentStoragePath(attachment);
+    if (storedPath) {
+      const cleanRelative = normalizeRelativeUploadPath(storedPath);
+      if (!cleanRelative) throw new Error('Invalid attachment path');
+      const filePath = path.join(this.uploadDir, ...cleanRelative.split('/'));
+      const relative = path.relative(this.uploadDir, filePath);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Invalid attachment path');
+      return filePath;
+    }
+    if (!attachment.storageName) throw new Error('Missing attachment storage name');
+    return path.join(this.uploadDir, normalizeFileName(attachment.storageName));
+  }
+
+  async publicUploadPath(requestPath) {
+    const accessPrefix = this.data.settings.uploadUrlConfig.accessPrefix;
+    if (requestPath !== accessPrefix && !requestPath.startsWith(`${accessPrefix}/`)) return null;
+    let rawRelative = '';
+    try {
+      rawRelative = decodeURIComponent(requestPath.slice(accessPrefix.length).replace(/^\/+/, ''));
+    } catch {
+      return null;
+    }
+    const cleanRelative = normalizeRelativeUploadPath(rawRelative);
+    if (!cleanRelative) return null;
+    const filePath = path.join(this.uploadDir, ...cleanRelative.split('/'));
+    const relative = path.relative(this.uploadDir, filePath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+    try {
+      const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) return null;
+    } catch {
+      return null;
+    }
+    return filePath;
+  }
+
+  async uniqueAttachmentName(directory, originalName) {
+    let suffix = 0;
+    while (suffix < 10000) {
+      const candidate = appendDuplicateSuffix(originalName, suffix);
+      try {
+        await fs.access(path.join(directory, candidate));
+        suffix += 1;
+      } catch (error) {
+        if (error.code === 'ENOENT') return candidate;
+        throw error;
+      }
+    }
+    return `${createId('file')}-${originalName}`;
+  }
+
   async addAttachment(taskId, file) {
     const task = this.data.tasks.find(item => item.id === taskId);
     if (!task) return null;
     const id = createId('file');
     const safeOriginal = normalizeFileName(file.filename);
-    const extension = path.extname(safeOriginal).slice(0, 16);
-    const storageName = `${id}${extension}`;
-    await fs.writeFile(path.join(this.uploadDir, storageName), file.content);
+    const dateParts = uploadDateParts();
+    const dateDir = path.join(this.uploadDir, ...dateParts);
+    await fs.mkdir(dateDir, { recursive: true });
+    const storedName = await this.uniqueAttachmentName(dateDir, safeOriginal);
+    const storageName = path.posix.join(...dateParts, storedName);
+    const relativePath = this.uploadAccessPath(storageName);
+    await fs.writeFile(path.join(dateDir, storedName), file.content);
     const attachment = {
       id,
       originalName: safeOriginal,
@@ -580,6 +722,8 @@ export class TodoStore {
       mimeType: file.contentType || 'application/octet-stream',
       uploadedAt: nowISO(),
       storageName,
+      relativePath,
+      accessPath: relativePath,
       missing: false
     };
     task.attachments.push(attachment);
@@ -593,13 +737,13 @@ export class TodoStore {
     if (!found) return false;
     found.task.attachments = found.task.attachments.filter(item => item.id !== id);
     found.task.updatedAt = nowISO();
-    await fs.rm(path.join(this.uploadDir, found.attachment.storageName), { force: true });
+    await fs.rm(await this.resolveAttachmentFilePath(found.attachment), { force: true });
     await this.save();
     return true;
   }
 
   async attachmentPath(attachment) {
-    const filePath = path.join(this.uploadDir, attachment.storageName);
+    const filePath = await this.resolveAttachmentFilePath(attachment);
     await fs.access(filePath);
     return filePath;
   }
@@ -607,18 +751,22 @@ export class TodoStore {
   async importAttachmentEntries(entries) {
     const attachments = this.data.tasks.flatMap(task => task.attachments.map(attachment => ({ task, attachment })));
     const byStorageName = new Map(attachments.map(item => [item.attachment.storageName, item]));
+    const byStoragePath = new Map(attachments.map(item => [this.attachmentStoragePath(item.attachment), item]).filter(([key]) => key));
     const byId = new Map(attachments.map(item => [item.attachment.id, item]));
     const summary = { matched: 0, unused: 0, restored: [] };
 
     for (const entry of entries) {
       const cleanName = normalizeFileName(entry.basename);
+      const cleanEntryPath = normalizeRelativeUploadPath(entry.name);
       const idFromName = cleanName.split('.')[0];
-      const match = byStorageName.get(cleanName) || byId.get(idFromName);
+      const match = byStorageName.get(cleanEntryPath) || byStoragePath.get(cleanEntryPath) || byStorageName.get(cleanName) || byId.get(idFromName);
       if (!match) {
         summary.unused += 1;
         continue;
       }
-      await fs.writeFile(path.join(this.uploadDir, match.attachment.storageName), entry.content);
+      const filePath = await this.resolveAttachmentFilePath(match.attachment);
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, entry.content);
       match.attachment.size = entry.content.length;
       match.attachment.missing = false;
       match.task.updatedAt = nowISO();

@@ -91,3 +91,17 @@ test('buildTaskRangeSegments clips multi-day tasks to visible days', () => {
   assert.equal(clippedEnd.endIndex, 6);
   assert.equal(clippedEnd.continuesAfter, true);
 });
+
+test('buildTaskRangeSegments exposes one segment for a multi-day task instead of per-day duplicates', () => {
+  const days = ['2026-06-16', '2026-06-17', '2026-06-18', '2026-06-19', '2026-06-20', '2026-06-21', '2026-06-22'];
+  const segments = buildTaskRangeSegments([
+    { id: 'range-task', title: '跨日范围任务', startDate: '2026-06-17', dueDate: '2026-06-20' },
+    { id: 'single-day', title: '单日任务', startDate: '2026-06-18', dueDate: '2026-06-18' }
+  ].filter(task => task.startDate !== task.dueDate), days);
+
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].task.id, 'range-task');
+  assert.equal(segments[0].startIndex, 1);
+  assert.equal(segments[0].span, 4);
+  assert.equal(segments[0].isRange, true);
+});

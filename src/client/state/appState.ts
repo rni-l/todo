@@ -71,7 +71,7 @@ export interface ClientState {
   projectsShowArchived: boolean;
   calendarMode: 'week' | 'month';
   selectedCalendarDate: string;
-  settingsPanel: 'account' | 'appearance' | 'notifications' | 'data' | 'attachments' | 'about';
+  settingsPanel: 'account' | 'appearance' | 'notifications' | 'data' | 'attachments' | 'uploadUrl' | 'about';
   createDefaults: Partial<CreateTaskDefaults>;
   saveState: string;
   toast: string;

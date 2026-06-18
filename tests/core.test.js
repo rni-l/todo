@@ -11,6 +11,7 @@ import {
   verifyPassword,
   verifySessionToken
 } from '../src/auth.js';
+import { parseMultipart } from '../src/multipart.js';
 import { createZip, parseZip } from '../src/zip.js';
 import { TodoStore } from '../src/storage.js';
 
@@ -71,6 +72,21 @@ test('zip helper round-trips stored attachment files', async () => {
   assert.equal(entries[1].content.toString('utf8'), 'beta');
 });
 
+test('multipart parser preserves utf8 filenames and filename star values', () => {
+  const boundary = 'todo-boundary';
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="中文 文件.txt"\r\nContent-Type: text/plain\r\n\r\nhello\r\n`, 'utf8'),
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file2"; filename="ignored.txt"; filename*=UTF-8''%E6%B5%8B%E8%AF%95.mp4\r\nContent-Type: video/mp4\r\n\r\nvideo\r\n`, 'utf8'),
+    Buffer.from(`--${boundary}--\r\n`, 'utf8')
+  ]);
+
+  const parts = parseMultipart(body, `multipart/form-data; boundary=${boundary}`);
+
+  assert.equal(parts[0].filename, '中文 文件.txt');
+  assert.equal(parts[0].content.toString('utf8'), 'hello');
+  assert.equal(parts[1].filename, '测试.mp4');
+});
+
 test('task update can clear optional fields', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });
@@ -109,7 +125,100 @@ test('task urgent flag defaults false and can be updated', async () => {
   assert.equal(cleared.urgent, false);
 });
 
-test('legacy payloads backfill layout settings, calendar day limit, and subtask metadata', async () => {
+test('attachments use configured access prefix, preserve utf8 names, and deduplicate files in dated directories', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  await store.updateSettings({
+    uploadUrlConfig: {
+      accessPrefix: '/test',
+      baseUrl: 'https://files.example.com/open',
+      paramKey: 'file'
+    }
+  });
+  const task = await store.createTask({ title: 'uploads' });
+
+  const first = await store.addAttachment(task.id, {
+    filename: '中文 文件.mp4',
+    contentType: 'video/mp4',
+    content: Buffer.from('one')
+  });
+  const second = await store.addAttachment(task.id, {
+    filename: '中文 文件.mp4',
+    contentType: 'video/mp4',
+    content: Buffer.from('two')
+  });
+  const third = await store.addAttachment(task.id, {
+    filename: '中文 文件.mp4',
+    contentType: 'video/mp4',
+    content: Buffer.from('three')
+  });
+
+  assert.equal(first.originalName, '中文 文件.mp4');
+  assert.match(first.storageName, /^\d{2}\/\d{2}\/\d{2}\/中文 文件\.mp4$/);
+  assert.match(first.relativePath, /^\/test\/\d{2}\/\d{2}\/\d{2}\/中文 文件\.mp4$/);
+  assert.equal(second.storageName, first.storageName.replace('中文 文件.mp4', '中文 文件-1.mp4'));
+  assert.equal(third.storageName, first.storageName.replace('中文 文件.mp4', '中文 文件-2.mp4'));
+  assert.equal((await fs.readFile(await store.attachmentPath(second))).toString('utf8'), 'two');
+
+  const publicPath = await store.publicUploadPath(first.relativePath);
+  assert.equal((await fs.readFile(publicPath)).toString('utf8'), 'one');
+
+  const publicData = store.publicData();
+  const publicAttachment = publicData.tasks.find(item => item.id === task.id).attachments[0];
+  assert.equal(publicAttachment.relativePath, first.relativePath);
+});
+
+test('legacy storageName-only attachments still download, delete, and export', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({ title: 'legacy attachment' });
+  const attachment = {
+    id: 'file_legacy',
+    originalName: 'legacy.txt',
+    size: 6,
+    mimeType: 'text/plain',
+    uploadedAt: '2026-06-18T00:00:00.000Z',
+    storageName: 'file_legacy.txt',
+    missing: false
+  };
+  task.attachments.push(attachment);
+  await fs.writeFile(path.join(store.uploadDir, attachment.storageName), 'legacy');
+  await store.save();
+
+  assert.equal((await fs.readFile(await store.attachmentPath(attachment))).toString('utf8'), 'legacy');
+  const zip = await createZip([{ path: await store.attachmentPath(attachment), name: attachment.storageName }]);
+  const entries = parseZip(zip);
+  assert.equal(entries[0].name, 'file_legacy.txt');
+  assert.equal(entries[0].content.toString('utf8'), 'legacy');
+
+  assert.equal(await store.deleteAttachment(attachment.id), true);
+  await assert.rejects(fs.access(path.join(store.uploadDir, attachment.storageName)));
+});
+
+test('attachment zip import restores dated storage paths', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+  const task = await store.createTask({ title: 'restore attachment' });
+  const attachment = await store.addAttachment(task.id, {
+    filename: 'a.mp4',
+    contentType: 'video/mp4',
+    content: Buffer.from('old')
+  });
+  await fs.rm(await store.attachmentPath(attachment));
+
+  const summary = await store.importAttachmentEntries([
+    { name: attachment.storageName, basename: path.basename(attachment.storageName), content: Buffer.from('restored') }
+  ]);
+
+  assert.equal(summary.matched, 1);
+  assert.equal(summary.restored[0], attachment.id);
+  assert.equal((await fs.readFile(await store.attachmentPath(attachment))).toString('utf8'), 'restored');
+});
+
+test('legacy payloads backfill layout settings, upload url config, calendar day limit, and subtask metadata', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });
   await store.init();
@@ -118,6 +227,7 @@ test('legacy payloads backfill layout settings, calendar day limit, and subtask 
   delete payload.settings.calendarDayLimit;
   delete payload.settings.sidebarCollapsed;
   delete payload.settings.dockDrawer;
+  delete payload.settings.uploadUrlConfig;
   payload.tasks = [
     {
       ...payload.tasks[0],
@@ -132,6 +242,11 @@ test('legacy payloads backfill layout settings, calendar day limit, and subtask 
   assert.equal(migrated.data.settings.calendarDayLimit, 3);
   assert.equal(migrated.data.settings.sidebarCollapsed, false);
   assert.equal(migrated.data.settings.dockDrawer, true);
+  assert.deepEqual(migrated.data.settings.uploadUrlConfig, {
+    accessPrefix: '/uploads',
+    baseUrl: '',
+    paramKey: 'path'
+  });
   assert.deepEqual(migrated.data.tasks[0].subtasks[0], {
     id: 'sub_legacy',
     title: 'Legacy subtask',

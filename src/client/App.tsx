@@ -51,6 +51,7 @@ import {
   taskMetaText,
 } from './lib/derived.ts';
 import {
+  buildTaskRangeSegments,
   dateInputDisplayValue,
   formatDateRange,
   formatLongDate,
@@ -64,6 +65,7 @@ import {
   todayISO,
   weekdayName,
   getTaskDateStatus,
+  type TaskRangeSegment,
 } from './lib/dates.ts';
 import { buildReportSummary } from './lib/reports.ts';
 import { appendSubtasks } from './lib/subtasks.ts';
@@ -75,6 +77,7 @@ const APP_VERSION = (window as Window & { TODO_APP_VERSION?: string }).TODO_APP_
 const PASSWORD_MIN_LENGTH = 3;
 const PASSWORD_MAX_LENGTH = 128;
 const PASSWORD_RULE_HINT = `至少 ${PASSWORD_MIN_LENGTH} 位，最多 ${PASSWORD_MAX_LENGTH} 位，且同时包含字母和数字；不能与当前密码相同。`;
+const SETTINGS_PANELS = ['account', 'appearance', 'notifications', 'data', 'attachments', 'uploadUrl', 'about'] as const;
 
 type StatItem = { value: string | number; label: string };
 type ViewGroup = { id?: string; title: string; tasks: Task[]; tone?: 'danger' | 'success' | 'warn' | 'muted' | 'accent' | '' };
@@ -82,6 +85,30 @@ type ReadyState = ClientState & { data: PublicData };
 
 function isoDay(value?: string | null) {
   return String(value || '').slice(0, 10);
+}
+
+function normalizeClientAccessPrefix(value?: string) {
+  const raw = String(value || '/uploads').trim() || '/uploads';
+  const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
+  return withSlash.replace(/\/+/g, '/').replace(/\/$/, '') || '/uploads';
+}
+
+function attachmentRelativePath(file: Attachment, settings: PublicData['settings']) {
+  if (file.relativePath) return file.relativePath;
+  if (file.accessPath) return file.accessPath;
+  const storageName = String(file.storageName || '');
+  if (storageName.includes('/')) return `${normalizeClientAccessPrefix(settings.uploadUrlConfig?.accessPrefix)}/${storageName.replace(/^\/+/, '')}`;
+  return '';
+}
+
+function attachmentExternalUrl(file: Attachment, settings: PublicData['settings']) {
+  const config = settings.uploadUrlConfig || { accessPrefix: '/uploads', baseUrl: '', paramKey: 'path' };
+  const baseUrl = String(config.baseUrl || '').trim();
+  const paramKey = String(config.paramKey || '').trim();
+  const relativePath = attachmentRelativePath(file, settings);
+  if (!baseUrl || !paramKey || !relativePath) return '';
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${separator}${encodeURIComponent(paramKey)}=${encodeURIComponent(relativePath)}`;
 }
 
 export function App() {
@@ -889,6 +916,11 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
   const weekDays = Array.from({ length: 7 }, (_, index) => todayISO(index - 2));
   const selected = state.selectedCalendarDate || todayISO();
   const days = state.calendarMode === 'week' ? weekDays.map(date => ({ date, inMonth: true })) : monthDays;
+  const dayDates = days.map(day => day.date);
+  const tasks = openTasks(state.data);
+  const limit = calendarDayLimit(state.data);
+  const rangeTasks = tasks.filter(isTaskRange);
+  const rangeRows = calendarRangeRowCount(rangeTasks, dayDates, limit);
   return (
     <>
       <PageHeader state={state} actions={actions} eyebrow="CALENDAR · 日期分布" title="日历" subtitle={`已选 ${formatLongDate(selected)}。点击日期后，新建任务默认带入这个日期。`} extraActions={<>
@@ -906,8 +938,9 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
       ]} />
       <section className="calendar-shell">
         {state.calendarMode === 'month' ? <div className="month-weekdays">{monthWeekdayLabels().map(label => <span key={label}>{label}</span>)}</div> : null}
-        <div className={state.calendarMode === 'week' ? 'week-grid' : 'month-grid'}>
+        <div className={`${state.calendarMode === 'week' ? 'week-grid' : 'month-grid'} calendar-range-grid`} style={{ '--range-rows': rangeRows } as React.CSSProperties}>
           {days.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
+          <CalendarRangeLayer actions={actions} days={dayDates} limit={limit} rangeTasks={rangeTasks} />
         </div>
       </section>
     </>
@@ -915,18 +948,77 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
 }
 
 function CalendarCell({ state, actions, day, index }: { state: ReadyState; actions: AppActions; day: { date: string; inMonth: boolean }; index: number }) {
-  const tasks = sortTasks(openTasks(state.data).filter(task => taskCoversDate(task, day.date)));
+  const allDayTasks = openTasks(state.data).filter(task => taskCoversDate(task, day.date));
+  const tasks = sortTasks(allDayTasks.filter(task => !isTaskRange(task)));
   const visible = tasks.slice(0, calendarDayLimit(state.data));
   const isMonth = state.calendarMode === 'month';
   const style = isMonth ? { gridColumn: (index % 7) + 1, gridRow: Math.floor(index / 7) + 1 } : { gridColumn: index + 1, gridRow: 1 };
   return (
     <article className={`${isMonth ? 'calendar-day' : 'day-column'} ${day.date === todayISO() ? 'today' : ''} ${day.date === state.selectedCalendarDate ? 'selected' : ''} ${day.inMonth ? '' : 'muted'}`} style={style} onClick={() => actions.setSelectedCalendarDate(day.date)}>
-      <div className="day-head"><strong>{isMonth ? Number(day.date.slice(8, 10)) : weekdayName(day.date)}</strong><span>{isMonth ? tasks.length : `${shortDate(day.date)} · ${tasks.length}`}</span></div>
+      <div className="day-head"><strong>{isMonth ? Number(day.date.slice(8, 10)) : weekdayName(day.date)}</strong><span>{isMonth ? allDayTasks.length : `${shortDate(day.date)} · ${allDayTasks.length}`}</span></div>
       {visible.map(task => <button className={`calendar-pill ${task.priority}`} type="button" key={task.id} onClick={event => { event.stopPropagation(); actions.openDetail(task.id); }}><strong>{task.title}</strong><span>{formatDateRange(task.startDate, task.dueDate)}</span></button>)}
       {tasks.length > visible.length ? <button className="tiny-action" type="button">还有 {tasks.length - visible.length} 项</button> : null}
       {!isMonth ? <button className="tiny-action" type="button" onClick={event => { event.stopPropagation(); actions.openCreate({ dueDate: day.date }); }}>+ 在这天新建</button> : null}
     </article>
   );
+}
+
+function CalendarRangeLayer({ actions, days, limit, rangeTasks }: { actions: AppActions; days: string[]; limit: number; rangeTasks: Task[] }) {
+  const weeks = [];
+  for (let index = 0; index < days.length; index += 7) weeks.push(days.slice(index, index + 7));
+  return (
+    <>
+      {weeks.map((week, rowIndex) => {
+        const segments = sortCalendarSegments(buildTaskRangeSegments(rangeTasks, week));
+        const visible = segments.slice(0, limit);
+        const hidden = Math.max(0, segments.length - visible.length);
+        return (
+          <div className="calendar-range-layer" key={week[0] || rowIndex} style={{ '--week-row': rowIndex + 1, '--range-count': visible.length } as React.CSSProperties}>
+            {visible.map((segment, segmentIndex) => <CalendarRangeBar actions={actions} key={`${segment.task.id}-${segment.visibleStart}`} segment={segment} row={segmentIndex + 1} />)}
+            {hidden ? <button className="calendar-range-more tiny-action" type="button" style={{ '--range-row': visible.length + 1 } as React.CSSProperties} onClick={event => { event.stopPropagation(); actions.setSelectedCalendarDate(week[0]); }}>还有 {hidden} 项范围任务</button> : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function CalendarRangeBar({ actions, segment, row }: { actions: AppActions; segment: TaskRangeSegment<Task>; row: number }) {
+  const priority = priorityMeta(segment.task.priority).key;
+  const className = [
+    'calendar-range-bar',
+    priority,
+    segment.continuesBefore ? 'continues-before' : '',
+    segment.continuesAfter ? 'continues-after' : ''
+  ].filter(Boolean).join(' ');
+  return (
+    <button className={className} type="button" style={{ '--range-start': segment.startIndex + 1, '--range-span': segment.span, '--range-row': row } as React.CSSProperties} onClick={event => { event.stopPropagation(); actions.openDetail(segment.task.id); }}>
+      <span>{segment.continuesBefore ? '‹ ' : ''}{segment.task.title}{segment.continuesAfter ? ' ›' : ''}</span>
+      <small>{formatDateRange(segment.startDate, segment.endDate)}</small>
+    </button>
+  );
+}
+
+function calendarRangeRowCount(rangeTasks: Task[], days: string[], limit: number) {
+  let max = 0;
+  for (let index = 0; index < days.length; index += 7) {
+    const week = days.slice(index, index + 7);
+    max = Math.max(max, Math.min(limit, buildTaskRangeSegments(rangeTasks, week).length));
+  }
+  return max;
+}
+
+function sortCalendarSegments(segments: TaskRangeSegment<Task>[]) {
+  return [...segments].sort((a, b) => {
+    if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
+    if (a.span !== b.span) return b.span - a.span;
+    return priorityMeta(b.task.priority).weight - priorityMeta(a.task.priority).weight;
+  });
+}
+
+function isTaskRange(task: Task) {
+  const range = taskDateRange(task);
+  return Boolean(range.startDate && range.endDate && range.startDate !== range.endDate);
 }
 
 function MatrixView({ state, actions }: { state: ReadyState; actions: AppActions }) {
@@ -1088,10 +1180,10 @@ function SettingsView({ state, actions }: { state: ReadyState; actions: AppActio
     <>
       <PageHeader state={state} actions={actions} eyebrow="SETTINGS · 单用户配置" title="设置" subtitle="集中管理账号安全、外观、通知、数据导入导出和附件恢复。危险操作保留确认。" extraActions={<button className="quiet-button danger-button" type="button" onClick={() => actions.logout()}>退出登录</button>} />
       <section className="settings-grid">
-        {(['account', 'appearance', 'notifications', 'data', 'attachments', 'about'] as const).map(id => <article className="settings-card" key={id}><header><span className={`chip ${state.settingsPanel === id ? 'strong' : ''}`}>{settingsPanelLabel(id)}</span><span className="group-meta">{settingsMeta(state, id, attachments)}</span></header><p>{settingsCopy(id)}</p><button className="tiny-action" type="button" onClick={() => actions.setSettingsPanel(id)}>进入设置</button></article>)}
+        {SETTINGS_PANELS.map(id => <article className="settings-card" key={id}><header><span className={`chip ${state.settingsPanel === id ? 'strong' : ''}`}>{settingsPanelLabel(id)}</span><span className="group-meta">{settingsMeta(state, id, attachments)}</span></header><p>{settingsCopy(id)}</p><button className="tiny-action" type="button" onClick={() => actions.setSettingsPanel(id)}>进入设置</button></article>)}
       </section>
       <section className="section-list settings-detail">
-        <nav className="section-tabs">{(['account', 'appearance', 'notifications', 'data', 'attachments', 'about'] as const).map(id => <button key={id} className={state.settingsPanel === id ? 'active' : ''} type="button" onClick={() => actions.setSettingsPanel(id)}>{settingsPanelLabel(id)}</button>)}</nav>
+        <nav className="section-tabs">{SETTINGS_PANELS.map(id => <button key={id} className={state.settingsPanel === id ? 'active' : ''} type="button" onClick={() => actions.setSettingsPanel(id)}>{settingsPanelLabel(id)}</button>)}</nav>
         {settingsPanel(state, actions, attachments)}
       </section>
     </>
@@ -1102,6 +1194,7 @@ function settingsMeta(state: ReadyState, id: ClientState['settingsPanel'], attac
   if (id === 'appearance') return themeLabel(state.data.settings.theme);
   if (id === 'data') return `${state.data.tasks.length} 个任务`;
   if (id === 'attachments') return `${attachments.length} 个附件`;
+  if (id === 'uploadUrl') return state.data.settings.uploadUrlConfig.accessPrefix;
   if (id === 'about') return APP_VERSION;
   if (id === 'notifications') return notificationState();
   return state.data.user.username;
@@ -1114,6 +1207,7 @@ function settingsCopy(id: ClientState['settingsPanel']) {
     notifications: '浏览器通知权限、测试通知和默认提醒时间。',
     data: '导出 JSON、选择导入文件、预检冲突和确认导入。',
     attachments: '附件 ZIP 导出、元数据匹配和缺失附件恢复。',
+    uploadUrl: '配置附件公开访问路径和外部 URL 查询参数。',
     about: '部署版本、离线状态、存储位置和浏览器支持说明。',
   }[id];
 }
@@ -1128,11 +1222,42 @@ function settingsPanel(state: ReadyState, actions: AppActions, attachments: { ta
     const total = attachments.reduce((sum, item) => sum + item.attachment.size, 0);
     return <section className="group"><div className="group-header"><div className="group-title"><span className="dot success" />附件导入导出</div><span className="group-meta">{attachments.length} 个文件 · {formatBytes(total)}</span></div><div className="panel"><Stats items={[{ value: attachments.length, label: '附件' }, { value: formatBytes(total), label: '总大小' }, { value: attachments.filter(item => item.attachment.missing).length, label: '缺失附件' }]} /><a className="soft-button" href="/api/export/attachments">导出全部附件</a><input className="input" type="file" accept=".zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) actions.importAttachmentZip(file); }} /></div></section>;
   }
+  if (panel === 'uploadUrl') return <UploadUrlConfigForm state={state} actions={actions} />;
   return <section className="group"><div className="group-header"><div className="group-title"><span className="dot muted" />应用信息</div><span className="group-meta">self-hosted</span></div><div className="panel"><div className="file-row"><span className="file-icon">VER</span><span><strong>应用版本</strong><span className="task-meta">前端缓存与 Service Worker 跟随发版版本更新</span></span><span className="chip strong">{APP_VERSION}</span></div><div className="file-row"><span className="file-icon">PWA</span><span><strong>PWA 可安装</strong><span className="task-meta">安装后仍使用同一服务端和登录会话</span></span><button className="tiny-action" type="button" onClick={() => actions.installPwa()}>安装</button></div><div className="file-row"><span className="file-icon">SRC</span><span><strong>原型设计稿</strong><span className="task-meta">保留在 /prototype/index.html 供评审对照</span></span><a className="tiny-action" href="/prototype/index.html">打开</a></div></div></section>;
 }
 
 function switchRow(title: string, copy: string, enabled: boolean, onClick: () => void) {
   return <div className="switch-row"><div><strong>{title}</strong><p className="page-subtitle">{copy}</p></div><button className={`switch ${enabled ? 'on' : ''}`} type="button" onClick={onClick} /></div>;
+}
+
+function UploadUrlConfigForm({ state, actions }: { state: ReadyState; actions: AppActions }) {
+  const config = state.data.settings.uploadUrlConfig;
+  return (
+    <section className="group">
+      <div className="group-header"><div className="group-title"><span className="dot success" />上传 URL 配置</div><span className="group-meta">{config.accessPrefix}</span></div>
+      <form className="panel" onSubmit={async event => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        await actions.updateSettings({
+          uploadUrlConfig: {
+            accessPrefix: normalizeClientAccessPrefix(String(form.get('accessPrefix') || '')),
+            baseUrl: String(form.get('baseUrl') || '').trim(),
+            paramKey: String(form.get('paramKey') || '').trim() || 'path',
+          },
+        });
+        actions.toast('上传 URL 配置已保存');
+      }}>
+        <label className="field"><span>访问前缀路径</span><input className="input" name="accessPrefix" defaultValue={config.accessPrefix} placeholder="/uploads" required /></label>
+        <label className="field"><span>URL</span><input className="input" name="baseUrl" defaultValue={config.baseUrl} placeholder="https://example.com/file" /></label>
+        <label className="field"><span>URL 参数 key</span><input className="input" name="paramKey" defaultValue={config.paramKey} placeholder="path" /></label>
+        <div className="file-row">
+          <span className="file-icon">URL</span>
+          <span><strong>生成规则</strong><span className="task-meta">{config.baseUrl && config.paramKey ? `${config.baseUrl}${config.baseUrl.includes('?') ? '&' : '?'}${config.paramKey}=${encodeURIComponent(`${config.accessPrefix}/26/06/18/a.mp4`)}` : `${config.accessPrefix}/26/06/18/a.mp4`}</span></span>
+        </div>
+        <button className="soft-button" type="submit">保存配置</button>
+      </form>
+    </section>
+  );
 }
 
 function PasswordForm({ actions }: { actions: AppActions }) {
@@ -1183,7 +1308,7 @@ function RightPanel({ state, actions, task }: { state: ReadyState; actions: AppA
         </div>
         <section className="panel"><div className="panel-title">描述</div><textarea className="textarea" value={task.description || ''} onChange={event => actions.updateTask(task.id, { description: event.target.value }, { silent: true })} /></section>
         <ChecklistPanel task={task} actions={actions} />
-        <AttachmentsPanel task={task} actions={actions} />
+        <AttachmentsPanel task={task} actions={actions} settings={state.data.settings} />
       </div>
     </aside>
   );
@@ -1216,12 +1341,16 @@ function ChecklistPanel({ task, actions }: { task: Task; actions: AppActions }) 
   );
 }
 
-function AttachmentsPanel({ task, actions }: { task: Task; actions: AppActions }) {
+function AttachmentsPanel({ task, actions, settings }: { task: Task; actions: AppActions; settings: PublicData['settings'] }) {
   return (
     <section className="panel">
       <div className="panel-title">附件 <span className="chip">{task.attachments.length} 个</span></div>
       <label className="upload-dropzone"><input className="file-input" type="file" multiple onChange={event => event.target.files && actions.uploadAttachment(task.id, event.target.files)} /><span className="file-icon">UP</span><span><strong>上传附件</strong><span className="task-meta">支持多文件，单个文件最大 100MB</span></span><span className="tiny-action">选择文件</span></label>
-      {task.attachments.map(file => <div className="file-row" key={file.id}><span className="file-icon">{fileExtension(file.originalName)}</span><span><strong>{file.originalName}</strong><span className="task-meta">{formatBytes(file.size)} · {shortDate(file.uploadedAt)}{file.missing ? ' · 文件缺失' : ''}</span></span><span className="header-actions"><a className="tiny-action" href={`/api/attachments/${file.id}/download`}>下载</a><button className="tiny-action" type="button" onClick={() => actions.deleteAttachment(file.id)}>删除</button></span></div>)}
+      {task.attachments.map(file => {
+        const relativePath = attachmentRelativePath(file, settings);
+        const externalUrl = attachmentExternalUrl(file, settings);
+        return <div className="file-row" key={file.id}><span className="file-icon">{fileExtension(file.originalName)}</span><span><strong>{file.originalName}</strong><span className="task-meta">{formatBytes(file.size)} · {shortDate(file.uploadedAt)}{file.missing ? ' · 文件缺失' : ''}</span>{relativePath ? <span className="task-meta attachment-url"><a href={relativePath} target="_blank" rel="noreferrer">{relativePath}</a>{externalUrl ? <a href={externalUrl} target="_blank" rel="noreferrer">{externalUrl}</a> : null}</span> : null}</span><span className="header-actions"><a className="tiny-action" href={`/api/attachments/${file.id}/download`}>下载</a><button className="tiny-action" type="button" onClick={() => actions.deleteAttachment(file.id)}>删除</button></span></div>;
+      })}
     </section>
   );
 }

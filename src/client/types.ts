@@ -35,6 +35,13 @@ export interface AppSettings {
   compactRows: boolean;
   pwaInstallDismissed: boolean;
   calendarDayLimit: number;
+  uploadUrlConfig: UploadUrlConfig;
+}
+
+export interface UploadUrlConfig {
+  accessPrefix: string;
+  baseUrl: string;
+  paramKey: string;
 }
 
 export interface ProjectSection {
@@ -88,6 +95,8 @@ export interface Attachment {
   mimeType: string;
   uploadedAt: string;
   storageName: string;
+  relativePath?: string;
+  accessPath?: string;
   missing?: boolean;
 }
 

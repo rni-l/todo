@@ -4,6 +4,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSessionSecret, createSessionToken, validateNewPassword, verifySessionToken } from './src/auth.js';
+import { firstField, firstFile, parseMultipart } from './src/multipart.js';
 import { TodoStore } from './src/storage.js';
 import { createZip, parseZip } from './src/zip.js';
 
@@ -29,6 +30,12 @@ const mimeTypes = new Map([
   ['.png', 'image/png'],
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.mp4', 'video/mp4'],
+  ['.mov', 'video/quicktime'],
+  ['.pdf', 'application/pdf'],
+  ['.zip', 'application/zip'],
   ['.ico', 'image/x-icon'],
   ['.webmanifest', 'application/manifest+json; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8']
@@ -166,70 +173,6 @@ function routeParams(pattern, pathName) {
   return params;
 }
 
-function getBoundary(contentType = '') {
-  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-  return match?.[1] || match?.[2] || null;
-}
-
-function parseMultipart(buffer, contentType) {
-  const boundary = getBoundary(contentType);
-  if (!boundary) {
-    const error = new Error('Missing multipart boundary');
-    error.status = 400;
-    throw error;
-  }
-
-  const delimiter = Buffer.from(`--${boundary}`);
-  const parts = [];
-  let cursor = buffer.indexOf(delimiter);
-  if (cursor < 0) return parts;
-  cursor += delimiter.length;
-
-  while (cursor < buffer.length) {
-    if (buffer[cursor] === 45 && buffer[cursor + 1] === 45) break;
-    if (buffer[cursor] === 13 && buffer[cursor + 1] === 10) cursor += 2;
-
-    const headerEnd = buffer.indexOf(Buffer.from('\r\n\r\n'), cursor);
-    if (headerEnd < 0) break;
-    const headerText = buffer.subarray(cursor, headerEnd).toString('utf8');
-    const headers = Object.fromEntries(
-      headerText.split('\r\n').map(line => {
-        const index = line.indexOf(':');
-        if (index < 0) return [line.toLowerCase(), ''];
-        return [line.slice(0, index).toLowerCase(), line.slice(index + 1).trim()];
-      })
-    );
-
-    const nextBoundary = buffer.indexOf(delimiter, headerEnd + 4);
-    if (nextBoundary < 0) break;
-    let content = buffer.subarray(headerEnd + 4, nextBoundary);
-    if (content.length >= 2 && content[content.length - 2] === 13 && content[content.length - 1] === 10) {
-      content = content.subarray(0, content.length - 2);
-    }
-
-    const disposition = headers['content-disposition'] || '';
-    const name = disposition.match(/name="([^"]+)"/)?.[1] || '';
-    const filename = disposition.match(/filename="([^"]*)"/)?.[1] || '';
-    parts.push({
-      name,
-      filename,
-      contentType: headers['content-type'] || 'application/octet-stream',
-      content
-    });
-    cursor = nextBoundary + delimiter.length;
-  }
-
-  return parts;
-}
-
-function firstFile(parts, name = 'file') {
-  return parts.find(part => part.name === name && part.filename) || parts.find(part => part.filename);
-}
-
-function firstField(parts, name) {
-  return parts.find(part => part.name === name && !part.filename)?.content.toString('utf8') || '';
-}
-
 function parseImportJson(raw) {
   try {
     return JSON.parse(raw);
@@ -304,6 +247,26 @@ async function sendDownload(res, filePath, filename, type = 'application/octet-s
     'Cache-Control': 'no-store'
   });
   fsSync.createReadStream(filePath).pipe(res);
+}
+
+async function servePublicUpload(req, res, url) {
+  const accessPrefix = store.data.settings.uploadUrlConfig.accessPrefix;
+  if (url.pathname !== accessPrefix && !url.pathname.startsWith(`${accessPrefix}/`)) return false;
+  if (req.method !== 'GET') {
+    text(res, 405, 'Method not allowed');
+    return true;
+  }
+  const filePath = await store.publicUploadPath(url.pathname);
+  if (!filePath) {
+    text(res, 404, 'Not found');
+    return true;
+  }
+  try {
+    await sendFile(res, filePath);
+  } catch {
+    text(res, 404, 'Not found');
+  }
+  return true;
 }
 
 async function api(req, res, url) {
@@ -605,6 +568,9 @@ async function importPayload(req) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    if (await servePublicUpload(req, res, url)) {
+      return;
+    }
     if (url.pathname.startsWith('/api/')) {
       await api(req, res, url);
       return;
