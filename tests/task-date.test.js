@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTaskRangeSegments, getRecentWindowDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange } from '../src/client/lib/dates.ts';
+import {
+  buildCalendarMonthWindow,
+  buildTaskRangeSegments,
+  calendarTaskDropPatch,
+  extendCalendarMonthWindow,
+  getRecentWindowDays,
+  getTaskDateStatus,
+  monthGridDays,
+  shouldShowInRecentView,
+  shiftTaskDateRange,
+  taskCoversDate,
+  taskDateRange
+} from '../src/client/lib/dates.ts';
 
 const TODAY = '2026-06-08';
 
@@ -104,4 +116,56 @@ test('buildTaskRangeSegments exposes one segment for a multi-day task instead of
   assert.equal(segments[0].startIndex, 1);
   assert.equal(segments[0].span, 4);
   assert.equal(segments[0].isRange, true);
+});
+
+test('monthGridDays accepts an explicit month reference', () => {
+  const days = monthGridDays('2026-02');
+
+  assert.equal(days.length, 35);
+  assert.equal(days[0].date, '2026-01-26');
+  assert.equal(days[6].date, '2026-02-01');
+  assert.equal(days[34].date, '2026-03-01');
+  assert.equal(days.find(day => day.date === '2026-02-14')?.inMonth, true);
+  assert.equal(days.find(day => day.date === '2026-01-31')?.inMonth, false);
+});
+
+test('calendar month windows extend without duplicates and preserve order', () => {
+  const initial = buildCalendarMonthWindow('2026-06-18', 1, 1);
+  assert.deepEqual(initial.map(month => month.key), ['2026-05', '2026-06', '2026-07']);
+
+  const extendedBefore = extendCalendarMonthWindow(initial, 'before', 2);
+  assert.deepEqual(extendedBefore.map(month => month.key), ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07']);
+
+  const extendedAfter = extendCalendarMonthWindow(extendedBefore, 'after', 2);
+  assert.deepEqual(extendedAfter.map(month => month.key), ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+  assert.equal(new Set(extendedAfter.map(month => month.key)).size, extendedAfter.length);
+});
+
+test('shiftTaskDateRange moves single-day tasks by due date only', () => {
+  assert.deepEqual(shiftTaskDateRange({ id: 'single', dueDate: '2026-06-10' }, '2026-06-20'), {
+    startDate: null,
+    endDate: '2026-06-20'
+  });
+});
+
+test('shiftTaskDateRange keeps range duration when moving to a target date', () => {
+  assert.deepEqual(shiftTaskDateRange({ id: 'range', startDate: '2026-06-10', dueDate: '2026-06-12' }, '2026-06-20'), {
+    startDate: '2026-06-20',
+    endDate: '2026-06-22'
+  });
+});
+
+test('calendarTaskDropPatch updates single-day tasks with dueDate only', () => {
+  assert.deepEqual(calendarTaskDropPatch({ id: 'single', dueDate: '2026-06-10', startDate: null }, '2026-06-20', 'single'), {
+    dueDate: '2026-06-20'
+  });
+  assert.equal(calendarTaskDropPatch({ id: 'single', dueDate: '2026-06-20', startDate: null }, '2026-06-20', 'single'), null);
+});
+
+test('calendarTaskDropPatch shifts range tasks by start date', () => {
+  assert.deepEqual(calendarTaskDropPatch({ id: 'range', startDate: '2026-06-10', dueDate: '2026-06-12' }, '2026-06-20', 'range'), {
+    startDate: '2026-06-20',
+    dueDate: '2026-06-22'
+  });
+  assert.equal(calendarTaskDropPatch({ id: 'range', startDate: '2026-06-20', dueDate: '2026-06-22' }, '2026-06-20', 'range'), null);
 });

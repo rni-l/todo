@@ -16,6 +16,12 @@ export interface MonthDay {
   inMonth: boolean;
 }
 
+export interface CalendarMonth {
+  key: string;
+  label: string;
+  days: MonthDay[];
+}
+
 export interface TaskRangeSegment<T extends Partial<Task> = Task> {
   task: T;
   startDate: string;
@@ -30,10 +36,21 @@ export interface TaskRangeSegment<T extends Partial<Task> = Task> {
   continuesAfter: boolean;
 }
 
+export type CalendarTaskDragType = 'single' | 'range';
+
 function addDaysISO(baseISO: string, offsetDays: number) {
   const date = new Date(`${baseISO}T12:00:00`);
   date.setDate(date.getDate() + offsetDays);
   return date.toISOString().slice(0, 10);
+}
+
+function parseISODate(value: string) {
+  const normalized = value.length === 7 ? `${value}-01` : value.slice(0, 10);
+  return new Date(`${normalized}T12:00:00`);
+}
+
+export function addDays(baseISO: string, offsetDays: number) {
+  return addDaysISO(baseISO, offsetDays);
 }
 
 export function todayISO(offsetDays = 0) {
@@ -171,8 +188,26 @@ export function parseDateInput(value: unknown, baseValue = todayISO()) {
   return date.toISOString().slice(0, 10);
 }
 
-export function monthGridDays(reference = new Date()): MonthDay[] {
-  const base = new Date(reference);
+export function monthKey(reference: Date | string = new Date()) {
+  const base = typeof reference === 'string' ? parseISODate(reference) : new Date(reference);
+  base.setDate(1);
+  base.setHours(12, 0, 0, 0);
+  return base.toISOString().slice(0, 7);
+}
+
+export function offsetMonthKey(baseKey: string, offsetMonths: number) {
+  const base = parseISODate(`${baseKey}-01`);
+  base.setMonth(base.getMonth() + offsetMonths, 1);
+  base.setHours(12, 0, 0, 0);
+  return base.toISOString().slice(0, 7);
+}
+
+export function monthLabel(key: string) {
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(parseISODate(`${key}-01`));
+}
+
+export function monthGridDays(reference: Date | string = new Date()): MonthDay[] {
+  const base = typeof reference === 'string' ? parseISODate(reference.length === 7 ? `${reference}-01` : reference) : new Date(reference);
   base.setDate(1);
   base.setHours(12, 0, 0, 0);
   const currentMonth = base.getMonth();
@@ -198,6 +233,58 @@ export function monthGridDays(reference = new Date()): MonthDay[] {
     });
   }
   return days.slice(0, totalCells);
+}
+
+export function buildCalendarMonth(key: string): CalendarMonth {
+  return {
+    key,
+    label: monthLabel(key),
+    days: monthGridDays(key)
+  };
+}
+
+export function buildCalendarMonthWindow(center: string = todayISO(), before = 1, after = 1): CalendarMonth[] {
+  const centerKey = monthKey(center);
+  return Array.from({ length: before + after + 1 }, (_, index) => buildCalendarMonth(offsetMonthKey(centerKey, index - before)));
+}
+
+export function extendCalendarMonthWindow(months: CalendarMonth[], direction: 'before' | 'after', count = 1): CalendarMonth[] {
+  const keys = new Set(months.map(month => month.key));
+  const anchor = direction === 'before' ? months[0]?.key : months[months.length - 1]?.key;
+  if (!anchor) return buildCalendarMonthWindow(todayISO(), direction === 'before' ? count : 0, direction === 'after' ? count : 0);
+
+  const additions = Array.from({ length: count }, (_, index) => {
+    const offset = direction === 'before' ? -(count - index) : index + 1;
+    return buildCalendarMonth(offsetMonthKey(anchor, offset));
+  }).filter(month => !keys.has(month.key));
+
+  return direction === 'before' ? [...additions, ...months] : [...months, ...additions];
+}
+
+export function shiftTaskDateRange(task: Partial<Task>, targetStartDate: string): TaskDateRange {
+  const { startDate, endDate } = taskDateRange(task);
+  if (!targetStartDate) return { startDate, endDate };
+  if (!startDate || !endDate || startDate === endDate) {
+    return { startDate: null, endDate: targetStartDate };
+  }
+  const start = parseISODate(startDate);
+  const end = parseISODate(endDate);
+  const durationDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return {
+    startDate: targetStartDate,
+    endDate: addDaysISO(targetStartDate, durationDays)
+  };
+}
+
+export function calendarTaskDropPatch(task: Partial<Task>, targetDate: string, dragType: CalendarTaskDragType): Pick<Partial<Task>, 'startDate' | 'dueDate'> | null {
+  const range = taskDateRange(task);
+  if (dragType === 'range' && range.startDate && range.endDate && range.startDate !== range.endDate) {
+    const shifted = shiftTaskDateRange(task, targetDate);
+    if (shifted.startDate === range.startDate && shifted.endDate === range.endDate) return null;
+    return { startDate: shifted.startDate, dueDate: shifted.endDate };
+  }
+  if (task.dueDate === targetDate) return null;
+  return { dueDate: targetDate };
 }
 
 export function monthWeekdayLabels() {

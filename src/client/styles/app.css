@@ -175,7 +175,6 @@ h1, h2, h3, p { margin: 0; }
 .main-pane {
   min-width: 0;
   width: 100%;
-  max-width: none;
   padding: 28px clamp(18px, 3vw, 42px) 96px;
 }
 .page-header {
@@ -447,7 +446,47 @@ h1, h2, h3, p { margin: 0; }
   color: var(--accent);
 }
 
-.calendar-shell { display: grid; gap: 8px; width: 100%; max-width: none; }
+.calendar-shell { display: grid; gap: 12px; width: 100%; min-width: 0; }
+.calendar-month-scroll {
+  display: grid;
+  gap: 22px;
+  max-height: min(72vh, 920px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+.calendar-scroll-sentinel {
+  min-height: 1px;
+  pointer-events: none;
+}
+.calendar-month-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.calendar-month-grid-scroll {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.calendar-month-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+.calendar-month-title h2 {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 820;
+  letter-spacing: 0;
+}
+.calendar-month-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
 .month-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -482,6 +521,11 @@ h1, h2, h3, p { margin: 0; }
 }
 .calendar-day.today, .day-column.today { border-color: color-mix(in oklch, var(--accent) 40%, var(--border)); }
 .calendar-day.selected, .day-column.selected { box-shadow: inset 0 0 0 2px var(--accent-soft); }
+.calendar-day.drag-over, .day-column.drag-over {
+  border-color: color-mix(in oklch, var(--accent) 62%, var(--border));
+  background: color-mix(in oklch, var(--accent) 9%, var(--surface));
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent);
+}
 .calendar-day.muted { opacity: .55; }
 .day-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .day-head span { color: var(--muted); font-size: 12px; }
@@ -495,7 +539,12 @@ h1, h2, h3, p { margin: 0; }
   gap: 2px;
   text-align: left;
   min-width: 0;
+  cursor: grab;
+  transition: opacity .16s ease, transform .16s ease, background .16s ease;
 }
+.calendar-pill:hover { transform: translateY(-1px); }
+.calendar-pill:active { cursor: grabbing; }
+.calendar-pill.dragging { opacity: .62; }
 .calendar-pill span { color: var(--muted); font-size: 11px; }
 .calendar-pill.high { background: color-mix(in oklch, var(--danger) 12%, transparent); }
 .calendar-pill.medium { background: color-mix(in oklch, var(--warn) 12%, transparent); }
@@ -531,7 +580,12 @@ h1, h2, h3, p { margin: 0; }
   text-align: left;
   font-size: 12px;
   box-shadow: 0 7px 18px color-mix(in oklch, var(--fg) 6%, transparent);
+  cursor: grab;
+  transition: opacity .16s ease, transform .16s ease, border-color .16s ease;
 }
+.calendar-range-bar:hover { transform: translateY(-1px); }
+.calendar-range-bar:active { cursor: grabbing; }
+.calendar-range-bar.dragging { opacity: .62; }
 .calendar-range-bar span {
   min-width: 0;
   overflow: hidden;
@@ -560,7 +614,6 @@ h1, h2, h3, p { margin: 0; }
 .matrix-grid, .reports-grid, .project-grid, .tag-grid, .filter-grid, .settings-grid {
   display: grid;
   width: 100%;
-  max-width: none;
   gap: 14px;
 }
 .matrix-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -816,12 +869,28 @@ h1, h2, h3, p { margin: 0; }
     border-left: 0;
   }
   .matrix-grid, .reports-grid { grid-template-columns: 1fr; }
-  .month-grid, .week-grid { overflow-x: auto; grid-template-columns: repeat(7, minmax(140px, 1fr)); }
+  .calendar-month-scroll {
+    max-height: min(58vh, 620px);
+    padding-right: 0;
+  }
+  .calendar-month-grid-scroll {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .calendar-month-grid-scroll .month-weekdays,
+  .calendar-month-grid-scroll .month-grid {
+    min-width: 980px;
+  }
+  .week-grid { overflow-x: auto; grid-template-columns: repeat(7, minmax(140px, 1fr)); }
 }
 
 @media (max-width: 560px) {
   .page-title { font-size: 34px; }
   .header-actions { justify-content: flex-start; }
   .property { grid-template-columns: 1fr; }
-  .month-grid, .week-grid { grid-template-columns: repeat(7, 128px); }
+  .calendar-month-grid-scroll .month-weekdays,
+  .calendar-month-grid-scroll .month-grid {
+    min-width: 944px;
+  }
+  .week-grid { grid-template-columns: repeat(7, 128px); }
 }

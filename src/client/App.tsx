@@ -1,5 +1,5 @@
-import type { FormEvent, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { DragEvent, FormEvent, ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   type AttachmentResponse,
   type DeleteResponse,
@@ -51,12 +51,14 @@ import {
   taskMetaText,
 } from './lib/derived.ts';
 import {
+  buildCalendarMonthWindow,
   buildTaskRangeSegments,
+  calendarTaskDropPatch,
+  extendCalendarMonthWindow,
   dateInputDisplayValue,
   formatDateRange,
   formatLongDate,
   formatTime,
-  monthGridDays,
   monthWeekdayLabels,
   relativeDate,
   shortDate,
@@ -912,19 +914,87 @@ function RecentView({ state, actions }: { state: ReadyState; actions: AppActions
 }
 
 function CalendarView({ state, actions }: { state: ReadyState; actions: AppActions }) {
-  const monthDays = monthGridDays();
+  const [months, setMonths] = useState(() => buildCalendarMonthWindow(todayISO(), 1, 1));
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const topSentinelRef = useRef<HTMLDivElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const initialMonthScrollDone = useRef(false);
+  const monthToPreserveAfterPrepend = useRef<string | null>(null);
+  const [monthBoundaryLoadingEnabled, setMonthBoundaryLoadingEnabled] = useState(false);
   const weekDays = Array.from({ length: 7 }, (_, index) => todayISO(index - 2));
   const selected = state.selectedCalendarDate || todayISO();
-  const days = state.calendarMode === 'week' ? weekDays.map(date => ({ date, inMonth: true })) : monthDays;
-  const dayDates = days.map(day => day.date);
   const tasks = openTasks(state.data);
   const limit = calendarDayLimit(state.data);
   const rangeTasks = tasks.filter(isTaskRange);
-  const rangeRows = calendarRangeRowCount(rangeTasks, dayDates, limit);
+  const weekDayModels = weekDays.map(date => ({ date, inMonth: true }));
+  const weekDayDates = weekDayModels.map(day => day.date);
+  const weekRangeRows = calendarRangeRowCount(rangeTasks, weekDayDates, limit);
+
+  useEffect(() => {
+    if (!monthBoundaryLoadingEnabled) return;
+    if (state.calendarMode !== 'month') return;
+    const root = scrollRef.current;
+    const top = topSentinelRef.current;
+    const bottom = bottomSentinelRef.current;
+    if (!root || !top || !bottom || !('IntersectionObserver' in window)) return;
+
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        if (entry.target === top) {
+          monthToPreserveAfterPrepend.current = calendarMonthNearestTop(root);
+          setMonths(current => extendCalendarMonthWindow(current, 'before', 1));
+        }
+        if (entry.target === bottom) setMonths(current => extendCalendarMonthWindow(current, 'after', 1));
+      }
+    }, { root, threshold: 0.05 });
+
+    observer.observe(top);
+    observer.observe(bottom);
+    return () => observer.disconnect();
+  }, [monthBoundaryLoadingEnabled, state.calendarMode]);
+
+  useLayoutEffect(() => {
+    const preservedKey = monthToPreserveAfterPrepend.current;
+    if (!preservedKey) return;
+    monthToPreserveAfterPrepend.current = null;
+    scrollCalendarMonthIntoView(scrollRef.current, preservedKey);
+  }, [months]);
+
+  useEffect(() => {
+    if (state.calendarMode !== 'month') return;
+    const selectedKey = selected.slice(0, 7);
+    setMonths(current => current.some(month => month.key === selectedKey) ? current : buildCalendarMonthWindow(selected, 1, 1));
+  }, [selected, state.calendarMode]);
+
+  useEffect(() => {
+    if (state.calendarMode !== 'month' || initialMonthScrollDone.current) return;
+    initialMonthScrollDone.current = true;
+    window.requestAnimationFrame(() => {
+      scrollCalendarMonthIntoView(scrollRef.current, selected.slice(0, 7));
+      window.requestAnimationFrame(() => {
+        setMonthBoundaryLoadingEnabled(true);
+      });
+    });
+  }, [months, selected, state.calendarMode]);
+
+  const selectToday = () => {
+    const today = todayISO();
+    setMonthBoundaryLoadingEnabled(false);
+    setMonths(buildCalendarMonthWindow(today, 1, 1));
+    actions.setSelectedCalendarDate(today);
+    window.requestAnimationFrame(() => {
+      scrollCalendarMonthIntoView(scrollRef.current, today.slice(0, 7));
+      window.requestAnimationFrame(() => {
+        setMonthBoundaryLoadingEnabled(true);
+      });
+    });
+  };
+
   return (
     <>
       <PageHeader state={state} actions={actions} eyebrow="CALENDAR · 日期分布" title="日历" subtitle={`已选 ${formatLongDate(selected)}。点击日期后，新建任务默认带入这个日期。`} extraActions={<>
-        <button className="quiet-button" type="button" onClick={() => actions.setSelectedCalendarDate(todayISO())}>今天</button>
+        <button className="quiet-button" type="button" onClick={selectToday}>今天</button>
         <div className="segmented">
           <button className={state.calendarMode === 'week' ? 'active' : ''} type="button" onClick={() => actions.setCalendarMode('week')}>周</button>
           <button className={state.calendarMode === 'month' ? 'active' : ''} type="button" onClick={() => actions.setCalendarMode('month')}>月</button>
@@ -937,14 +1007,58 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
         { value: openTasks(state.data).filter(task => task.recurrence).length, label: '重复任务' },
       ]} />
       <section className="calendar-shell">
-        {state.calendarMode === 'month' ? <div className="month-weekdays">{monthWeekdayLabels().map(label => <span key={label}>{label}</span>)}</div> : null}
-        <div className={`${state.calendarMode === 'week' ? 'week-grid' : 'month-grid'} calendar-range-grid`} style={{ '--range-rows': rangeRows } as React.CSSProperties}>
-          {days.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
-          <CalendarRangeLayer actions={actions} days={dayDates} limit={limit} rangeTasks={rangeTasks} />
-        </div>
+        {state.calendarMode === 'week' ? (
+          <div className="week-grid calendar-range-grid" style={{ '--range-rows': weekRangeRows } as React.CSSProperties}>
+            {weekDayModels.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
+            <CalendarRangeLayer actions={actions} days={weekDayDates} limit={limit} rangeTasks={rangeTasks} />
+          </div>
+        ) : (
+          <div className="calendar-month-scroll" ref={scrollRef}>
+            <div className="calendar-scroll-sentinel" ref={topSentinelRef} aria-hidden="true" />
+            {months.map(month => {
+              const dayDates = month.days.map(day => day.date);
+              const rangeRows = calendarRangeRowCount(rangeTasks, dayDates, limit);
+              return (
+                <section className="calendar-month-section" data-month-key={month.key} key={month.key}>
+                  <div className="calendar-month-title">
+                    <h2>{month.label}</h2>
+                    <span>{month.days.filter(day => day.inMonth).length} 天</span>
+                  </div>
+                  <div className="calendar-month-grid-scroll">
+                    <div className="month-weekdays">{monthWeekdayLabels().map(label => <span key={label}>{label}</span>)}</div>
+                    <div className="month-grid calendar-range-grid" style={{ '--range-rows': rangeRows } as React.CSSProperties}>
+                      {month.days.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
+                      <CalendarRangeLayer actions={actions} days={dayDates} limit={limit} rangeTasks={rangeTasks} />
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+            <div className="calendar-scroll-sentinel" ref={bottomSentinelRef} aria-hidden="true" />
+          </div>
+        )}
       </section>
     </>
   );
+}
+
+function scrollCalendarMonthIntoView(scroller: HTMLDivElement | null, key: string) {
+  const target = scroller?.querySelector<HTMLElement>(`[data-month-key="${key}"]`);
+  if (!scroller || !target) return;
+  scroller.scrollTop = target.offsetTop - scroller.offsetTop;
+}
+
+function calendarMonthNearestTop(scroller: HTMLDivElement | null) {
+  if (!scroller) return null;
+  const rootTop = scroller.getBoundingClientRect().top;
+  let nearest: { key: string; distance: number } | null = null;
+  for (const element of Array.from(scroller.querySelectorAll<HTMLElement>('[data-month-key]'))) {
+    const key = element.dataset.monthKey;
+    if (!key) continue;
+    const distance = Math.abs(element.getBoundingClientRect().top - rootTop);
+    if (!nearest || distance < nearest.distance) nearest = { key, distance };
+  }
+  return nearest?.key || null;
 }
 
 function CalendarCell({ state, actions, day, index }: { state: ReadyState; actions: AppActions; day: { date: string; inMonth: boolean }; index: number }) {
@@ -953,10 +1067,56 @@ function CalendarCell({ state, actions, day, index }: { state: ReadyState; actio
   const visible = tasks.slice(0, calendarDayLimit(state.data));
   const isMonth = state.calendarMode === 'month';
   const style = isMonth ? { gridColumn: (index % 7) + 1, gridRow: Math.floor(index / 7) + 1 } : { gridColumn: index + 1, gridRow: 1 };
+  const onDrop = async (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over');
+    const payload = readCalendarDragPayload(event);
+    if (!payload) return;
+    const task = taskById(state.data, payload.taskId);
+    if (!task) return;
+    const patch = calendarTaskDropPatch(task, day.date, payload.dragType);
+    if (!patch) return;
+    await actions.updateTask(task.id, patch, { silent: true });
+    actions.setSelectedCalendarDate(day.date);
+    actions.toast(payload.dragType === 'range' ? '范围任务已整体移动' : '任务日期已更新');
+  };
   return (
-    <article className={`${isMonth ? 'calendar-day' : 'day-column'} ${day.date === todayISO() ? 'today' : ''} ${day.date === state.selectedCalendarDate ? 'selected' : ''} ${day.inMonth ? '' : 'muted'}`} style={style} onClick={() => actions.setSelectedCalendarDate(day.date)}>
+    <article
+      className={`${isMonth ? 'calendar-day' : 'day-column'} ${day.date === todayISO() ? 'today' : ''} ${day.date === state.selectedCalendarDate ? 'selected' : ''} ${day.inMonth ? '' : 'muted'}`}
+      style={style}
+      data-date={day.date}
+      onClick={() => actions.setSelectedCalendarDate(day.date)}
+      onDragEnter={event => {
+        if (!hasCalendarDragPayload(event)) return;
+        event.preventDefault();
+        event.currentTarget.classList.add('drag-over');
+      }}
+      onDragOver={event => {
+        if (!hasCalendarDragPayload(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDragLeave={event => {
+        const nextTarget = event.relatedTarget;
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) event.currentTarget.classList.remove('drag-over');
+      }}
+      onDrop={onDrop}
+    >
       <div className="day-head"><strong>{isMonth ? Number(day.date.slice(8, 10)) : weekdayName(day.date)}</strong><span>{isMonth ? allDayTasks.length : `${shortDate(day.date)} · ${allDayTasks.length}`}</span></div>
-      {visible.map(task => <button className={`calendar-pill ${task.priority}`} type="button" key={task.id} onClick={event => { event.stopPropagation(); actions.openDetail(task.id); }}><strong>{task.title}</strong><span>{formatDateRange(task.startDate, task.dueDate)}</span></button>)}
+      {visible.map(task => (
+        <button
+          className={`calendar-pill ${task.priority}`}
+          draggable
+          type="button"
+          key={task.id}
+          data-task-id={task.id}
+          onClick={event => { event.stopPropagation(); actions.openDetail(task.id); }}
+          onDragStart={event => writeCalendarDragPayload(event, task.id, 'single')}
+          onDragEnd={event => event.currentTarget.classList.remove('dragging')}
+        >
+          <strong>{task.title}</strong><span>{formatDateRange(task.startDate, task.dueDate)}</span>
+        </button>
+      ))}
       {tasks.length > visible.length ? <button className="tiny-action" type="button">还有 {tasks.length - visible.length} 项</button> : null}
       {!isMonth ? <button className="tiny-action" type="button" onClick={event => { event.stopPropagation(); actions.openCreate({ dueDate: day.date }); }}>+ 在这天新建</button> : null}
     </article>
@@ -992,11 +1152,45 @@ function CalendarRangeBar({ actions, segment, row }: { actions: AppActions; segm
     segment.continuesAfter ? 'continues-after' : ''
   ].filter(Boolean).join(' ');
   return (
-    <button className={className} type="button" style={{ '--range-start': segment.startIndex + 1, '--range-span': segment.span, '--range-row': row } as React.CSSProperties} onClick={event => { event.stopPropagation(); actions.openDetail(segment.task.id); }}>
+    <button
+      className={className}
+      draggable
+      type="button"
+      data-task-id={segment.task.id}
+      style={{ '--range-start': segment.startIndex + 1, '--range-span': segment.span, '--range-row': row } as React.CSSProperties}
+      onClick={event => { event.stopPropagation(); actions.openDetail(segment.task.id); }}
+      onDragStart={event => writeCalendarDragPayload(event, segment.task.id, 'range')}
+      onDragEnd={event => event.currentTarget.classList.remove('dragging')}
+    >
       <span>{segment.continuesBefore ? '‹ ' : ''}{segment.task.title}{segment.continuesAfter ? ' ›' : ''}</span>
       <small>{formatDateRange(segment.startDate, segment.endDate)}</small>
     </button>
   );
+}
+
+function writeCalendarDragPayload(event: DragEvent<HTMLElement>, taskId: string, dragType: 'single' | 'range') {
+  event.stopPropagation();
+  event.currentTarget.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-todo-calendar-task', JSON.stringify({ taskId, dragType }));
+  event.dataTransfer.setData('text/plain', taskId);
+}
+
+function hasCalendarDragPayload(event: DragEvent<HTMLElement>) {
+  return Array.from(event.dataTransfer.types).includes('application/x-todo-calendar-task');
+}
+
+function readCalendarDragPayload(event: DragEvent<HTMLElement>) {
+  const raw = event.dataTransfer.getData('application/x-todo-calendar-task');
+  if (!raw) return null;
+  try {
+    const payload = JSON.parse(raw) as { taskId?: unknown; dragType?: unknown };
+    if (typeof payload.taskId !== 'string') return null;
+    if (payload.dragType !== 'single' && payload.dragType !== 'range') return null;
+    return { taskId: payload.taskId, dragType: payload.dragType };
+  } catch {
+    return null;
+  }
 }
 
 function calendarRangeRowCount(rangeTasks: Task[], days: string[], limit: number) {

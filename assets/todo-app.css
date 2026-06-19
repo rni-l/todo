@@ -219,7 +219,6 @@ svg { display: block; }
 .page-subtitle {
   margin-top: 10px;
   color: var(--muted);
-  max-width: 66ch;
 }
 .header-actions {
   display: flex;
