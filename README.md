@@ -1,68 +1,159 @@
 # Personal TODO Self-Hosted App
 
-Single-user self-hosted TODO web app built from the prototype files in this repository.
+A single-user, self-hosted TODO web app for personal task management. It combines a local Node.js HTTP server with a React + TypeScript frontend, stores all runtime data on disk as JSON, and includes a PM2 release workflow for running a stable packaged snapshot while development continues in the working tree.
 
-## Run
+The product is designed as a private personal workspace, not a team SaaS app. It supports task planning, project organization, calendar-style review, reports, markdown notes, checklist subtasks, attachments, import/export, and PWA installation.
+
+## Features
+
+- Single-user password login with an HttpOnly session cookie
+- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Reports, Projects, Tags, Smart Filters, Completed, Closed, and Settings
+- Task create/edit/complete/close/delete flows with priority, urgent flag, tags, projects, sections, due date ranges, reminder ranges, recurrence, markdown notes, checklist subtasks, and attachments
+- Project, tag, and smart filter management
+- Browser notification permission and test notification flow
+- JSON data export/import with preview
+- Attachment upload/download/delete plus ZIP export/import
+- PWA manifest and service worker with versioned cache busting
+- Release snapshots under `.deploy/releases/` for PM2 deployment
+
+## Tech Stack
+
+- Runtime: Node.js 20+
+- Server: native Node.js HTTP server
+- Frontend: React, TypeScript, Vite
+- Storage: local JSON files and local upload files
+- Process manager: PM2, optional for deployment
+
+## Repository Layout
+
+```text
+server.js                 HTTP server, API routes, auth cookie handling, static file serving
+src/auth.js               password hashing, password validation, session token helpers
+src/storage.js            JSON store, seed data, normalization, attachment paths
+src/client/               React + TypeScript frontend source
+public/                   production shell, manifest, service worker, built frontend assets
+assets/                   legacy/prototype static assets
+design/                   static design prototypes
+docs/plans/               implementation notes and product planning docs
+scripts/package-release.mjs
+tests/                    Node test runner suites
+ecosystem.config.cjs      PM2 deployment config
+```
+
+## Quick Start
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the app:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:38887`.
+Open:
 
-Default login:
-
-- Username: `self-hosted-user`
-- Password: `todo123456`
-
-For deployment, set a strong password before first run:
-
-```bash
-TODO_PASSWORD="your-strong-password" npm start
+```text
+http://localhost:38887
 ```
 
-Useful environment variables:
+The first generated data file uses local bootstrap credentials:
 
-- `PORT`: server port, defaults to `38887`
-- `TODO_USERNAME`: single user name, defaults to `self-hosted-user`
-- `TODO_PASSWORD`: initial password for the first generated data file
-- `TODO_DATA_DIR`: data directory, defaults to `./data`
-- `TODO_COOKIE_SECURE=1`: add `Secure` to session cookies when serving over HTTPS
+```text
+Username: self-hosted-user
+Password: todo123456
+```
 
-## Data
+For any shared or internet-accessible deployment, set a real password before the first run:
 
-The app stores JSON data and uploaded files under `data/` by default:
+```bash
+TODO_PASSWORD="replace-with-a-strong-password" npm start
+```
 
-- `data/todo-data.json`: tasks, projects, tags, filters, settings, attachment metadata
-- `data/uploads/`: attachment files
+You can also change the password later from Settings -> Account and Security.
 
-Original static prototype files remain available from the running server at `/prototype/index.html`.
+## Frontend Development
+
+The backend serves the built frontend from `public/dist`. For normal local usage, `npm run dev` is enough.
+
+When working on the React frontend with Vite, run the backend and Vite in separate terminals:
+
+```bash
+npm run dev
+```
+
+```bash
+npm run dev:client
+```
+
+The Vite dev server proxies `/api` and `/prototype` to the Node server on port `38887`.
+
+Build the frontend assets:
+
+```bash
+npm run build:client
+```
+
+## Configuration
+
+Environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `38887` | HTTP server port |
+| `TODO_USERNAME` | `self-hosted-user` | Username written into the first generated data file |
+| `TODO_PASSWORD` | `todo123456` | Password written into the first generated data file |
+| `TODO_SESSION_SECRET` | derived from the password hash | Optional extra session signing secret |
+| `TODO_DATA_DIR` | `./data` | Runtime JSON data and upload directory |
+| `TODO_LOG_DIR` | `.deploy/shared/logs` | PM2 log directory |
+| `TODO_COOKIE_SECURE` | unset | Set to `1` when serving over HTTPS |
+
+Important behavior:
+
+- `TODO_USERNAME` and `TODO_PASSWORD` are only used when a data file is created for the first time.
+- Existing credentials live in the runtime data file as a salted password hash.
+- If you need an isolated development dataset, set `TODO_DATA_DIR` to another directory.
+
+Example:
+
+```bash
+TODO_DATA_DIR=./data-dev npm run dev
+```
+
+## Runtime Data
+
+By default, the app stores runtime data under `data/`:
+
+```text
+data/todo-data.json       tasks, projects, tags, filters, settings, auth hash, attachment metadata
+data/uploads/             uploaded files
+data/tmp/                 temporary import/export backups
+```
+
+These files are private user data and should not be committed. The repository `.gitignore` already excludes the default runtime data paths.
 
 ## Release Snapshot
 
-`v1.4+` starts the online service from a packaged release snapshot instead of the active working tree. This lets you keep developing the next version without changing the files PM2 is serving.
-
-Build a release snapshot:
+Create a packaged runtime snapshot:
 
 ```bash
 npm run release:build
 ```
 
-This creates:
+This command builds the frontend and creates:
 
-- `.deploy/releases/<release-name>/`: immutable runtime snapshot
-- `.deploy/current`: symlink pointing at the active snapshot
-- `.deploy/shared/logs/`: PM2 stdout/stderr logs
-
-## PM2
-
-The repository includes `ecosystem.config.cjs` for PM2 deployment. It runs the app as `personal-todo` on port `38887` from `.deploy/current` and continues to use the existing `./data` directory by default.
-
-If you want production to use another data directory, set `TODO_DATA_DIR` before starting PM2. If you want local development to avoid touching production data, run dev with another path, for example:
-
-```bash
-TODO_DATA_DIR=./data-dev npm run dev
+```text
+.deploy/releases/<release-name>/   immutable runtime snapshot
+.deploy/current                    symlink pointing at the active snapshot
+.deploy/shared/logs/               PM2 stdout/stderr logs
 ```
+
+The release snapshot contains code and static assets. It continues to use the shared data directory, which defaults to `./data` unless `TODO_DATA_DIR` is set.
+
+## PM2 Deployment
 
 First deployment:
 
@@ -85,25 +176,33 @@ Stop the process:
 npm run pm2:stop
 ```
 
-## Implemented Scope
-
-- Single-user password login
-- Workspace views: Today, Inbox, Upcoming, Recent 7 Days, Calendar, Matrix, Reports, Projects, Tags, Smart Filters, Completed, Closed, Settings
-- Task create/edit/complete/close/delete with priority, urgent marker, tags, due date ranges, reminder time ranges, recurrence, checklist subtasks, markdown notes, attachments, and continuous-create modal flow
-- Task detail drawer with metadata, markdown preview, checklist subtasks, recurrence, reminders, and attachments
-- Project, tag, and smart filter management
-- Browser notification permission and test notification
-- PWA manifest and service worker
-- Data JSON export/import with preview
-- Attachment upload/download/delete and ZIP export/import
+The included PM2 app name is `personal-todo`.
 
 ## Tests
+
+Run the test suite:
 
 ```bash
 npm test
 ```
 
+Useful local checks:
+
 ```bash
 pgrep -af personal-todo
 lsof -i :38887
 ```
+
+## Publishing And Privacy Checklist
+
+Before pushing this repository to GitHub:
+
+- Do not commit `data/`; it may contain personal tasks, imported task history, settings, password hashes, and attachment metadata.
+- Do not commit `data/uploads/`; it may contain private uploaded files.
+- Do not commit `.deploy/`; it contains release snapshots, shared runtime data, and PM2 logs.
+- Do not commit `output/` or `.playwright-cli/`; they contain local screenshots, browser snapshots, console logs, and smoke-test scripts.
+- Do not commit `node_modules/`.
+- Review `.od-skills/` if you want a cleaner public repository; it contains local prototype/agent helper templates rather than app runtime code.
+- Replace the bootstrap password for any real deployment with `TODO_PASSWORD` before the first start, or change it immediately in Settings.
+
+The default username and password in source are development bootstrap values, not production credentials.
