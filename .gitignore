@@ -8,3 +8,6 @@ coverage/
 output/
 .deploy/
 .playwright-cli
+app/android/.gradle/
+app/android/.kotlin/
+app/android/app/build/

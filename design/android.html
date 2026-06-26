@@ -1,0 +1,2045 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人 TODO · Android 设计稿</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2308786f'/%3E%3Cpath d='M18 33l9 9 20-22' fill='none' stroke='white' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #f3f7f6;
+      --surface: #fbfdfc;
+      --surface-2: #eef5f3;
+      --surface-3: #e4eeeb;
+      --ink: #17211f;
+      --ink-soft: #51605d;
+      --muted: #75827f;
+      --line: #dce8e5;
+      --line-strong: #c6d6d2;
+      --accent: #08786f;
+      --accent-deep: #055f59;
+      --accent-soft: #dff2ee;
+      --accent-wash: #eef9f6;
+      --success: #168256;
+      --warn: #ad7417;
+      --danger: #b23a31;
+      --blue: #346aa6;
+      --violet: #7560a8;
+      --shadow: 0 18px 55px rgba(31, 56, 51, .12);
+      --tight-shadow: 0 10px 24px rgba(31, 56, 51, .10);
+      --phone-w: 390px;
+      --phone-h: 844px;
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+      --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-display: "Iowan Old Style", "Charter", Georgia, "Noto Serif SC", serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% -8%, rgba(8, 120, 111, .12), transparent 32rem),
+        radial-gradient(circle at 90% 5%, rgba(52, 106, 166, .09), transparent 28rem),
+        linear-gradient(180deg, #f8fbfa 0%, var(--bg) 48%, #eaf1ef 100%);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.42;
+      letter-spacing: 0;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: .32;
+      background-image:
+        linear-gradient(rgba(23, 33, 31, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 33, 31, .035) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, .9), transparent 76%);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1,
+    h2 {
+      font-family: var(--font-display);
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      width: min(100%, 1740px);
+      margin: 0 auto;
+      padding: 40px 28px 72px;
+    }
+
+    .brief {
+      display: grid;
+      grid-template-columns: minmax(320px, 1.2fr) minmax(280px, .8fr);
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 32px;
+    }
+
+    .brief-card {
+      position: relative;
+      overflow: hidden;
+      min-height: 220px;
+      padding: 28px;
+      border: 1px solid rgba(198, 214, 210, .78);
+      border-radius: 28px;
+      background: rgba(251, 253, 252, .72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .brief-card::after {
+      content: "";
+      position: absolute;
+      right: -90px;
+      top: -110px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(8, 120, 111, .16), transparent 66%);
+      pointer-events: none;
+    }
+
+    .brief-kicker,
+    .token-label,
+    .screen-label,
+    .eyebrow,
+    .meta-label {
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .brief h1 {
+      max-width: 780px;
+      margin-top: 10px;
+      font-size: clamp(36px, 5vw, 72px);
+      line-height: .94;
+      font-weight: 700;
+    }
+
+    .brief-copy {
+      max-width: 840px;
+      margin-top: 18px;
+      color: var(--ink-soft);
+      font-size: 16px;
+      line-height: 1.72;
+    }
+
+    .token-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .token-card {
+      min-height: 50px;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .58);
+    }
+
+    .token-card strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .swatch {
+      height: 42px;
+      border: 1px solid rgba(23, 33, 31, .08);
+      border-radius: 14px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65);
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(var(--phone-w), 1fr));
+      gap: 34px 26px;
+      align-items: start;
+    }
+
+    .screen-card {
+      display: grid;
+      justify-items: center;
+      gap: 12px;
+    }
+
+    .screen-label {
+      justify-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+    }
+
+    .screen-label strong {
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: 13px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .phone {
+      position: relative;
+      width: var(--phone-w);
+      height: var(--phone-h);
+      overflow: hidden;
+      border: 10px solid #16211f;
+      border-radius: 48px;
+      background: var(--bg);
+      box-shadow:
+        0 32px 70px rgba(15, 34, 31, .22),
+        inset 0 0 0 1px rgba(255, 255, 255, .18);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 8px;
+      left: 50%;
+      width: 112px;
+      height: 26px;
+      transform: translateX(-50%);
+      border-radius: 0 0 18px 18px;
+      background: #16211f;
+    }
+
+    .phone-inner {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 14% -10%, rgba(8, 120, 111, .12), transparent 42%),
+        linear-gradient(180deg, #fbfdfc 0%, var(--bg) 42%, #edf4f2 100%);
+    }
+
+    .phone.login .phone-inner {
+      grid-template-rows: auto 1fr;
+      background:
+        radial-gradient(circle at 8% 4%, rgba(8, 120, 111, .18), transparent 38%),
+        linear-gradient(145deg, #fdfefd 0%, #edf6f3 100%);
+    }
+
+    .status-bar {
+      position: relative;
+      z-index: 2;
+      height: 44px;
+      padding: 11px 22px 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .system-icons {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      color: var(--ink-soft);
+      font-size: 11px;
+    }
+
+    .signal {
+      width: 16px;
+      height: 10px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--ink-soft) 28%, transparent 28% 35%, var(--ink-soft) 35% 58%, transparent 58% 65%, var(--ink-soft) 65%);
+      opacity: .85;
+    }
+
+    .battery {
+      width: 22px;
+      height: 11px;
+      border: 1.5px solid var(--ink-soft);
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .battery::before {
+      content: "";
+      position: absolute;
+      right: -4px;
+      top: 3px;
+      width: 2px;
+      height: 4px;
+      border-radius: 0 2px 2px 0;
+      background: var(--ink-soft);
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      inset: 2px 5px 2px 2px;
+      border-radius: 2px;
+      background: var(--success);
+    }
+
+    .top-app {
+      z-index: 3;
+      display: grid;
+      gap: 12px;
+      padding: 6px 18px 12px;
+    }
+
+    .title-row,
+    .task-action-row,
+    .sheet-toolbar,
+    .setting-row,
+    .project-row,
+    .mini-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .title-row {
+      justify-content: space-between;
+    }
+
+    .title-copy {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      margin-bottom: 2px;
+      color: var(--accent-deep);
+      font-size: 10px;
+    }
+
+    .app-title {
+      max-width: 230px;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 28px;
+      font-weight: 760;
+      line-height: 1.06;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .title-sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .icon-btn,
+    .check-btn,
+    .small-btn,
+    .nav-item,
+    .fab,
+    .tab-pill,
+    .chip,
+    .ghost-btn,
+    .primary-btn {
+      min-height: 44px;
+      border: 0;
+      color: inherit;
+      font-family: inherit;
+    }
+
+    .icon-btn {
+      width: 44px;
+      flex: 0 0 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(198, 214, 210, .88);
+      border-radius: 15px;
+      background: rgba(251, 253, 252, .78);
+      box-shadow: 0 8px 18px rgba(31, 56, 51, .08), inset 0 1px 0 rgba(255, 255, 255, .74);
+      font-weight: 760;
+    }
+
+    .icon-btn.flat {
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .sync-strip,
+    .offline-strip,
+    .error-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 8px 11px;
+      border-radius: 14px;
+      color: var(--accent-deep);
+      background: rgba(223, 242, 238, .78);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .offline-strip {
+      color: #6f4b12;
+      background: #fff2d9;
+    }
+
+    .error-strip {
+      color: #8d2d27;
+      background: #ffe8e4;
+    }
+
+    .content {
+      min-height: 0;
+      overflow: hidden auto;
+      padding: 0 18px 18px;
+      scrollbar-width: none;
+    }
+
+    .content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .content.has-bottom-nav {
+      padding-bottom: 100px;
+    }
+
+    .hero-card {
+      position: relative;
+      overflow: hidden;
+      min-height: 144px;
+      padding: 18px;
+      border: 1px solid rgba(198, 214, 210, .78);
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, .78), rgba(223, 242, 238, .62)),
+        radial-gradient(circle at 95% 0%, rgba(8, 120, 111, .18), transparent 50%);
+      box-shadow: var(--tight-shadow);
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      width: 54px;
+      height: 54px;
+      border: 1px solid rgba(8, 120, 111, .16);
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, transparent 47%, rgba(8, 120, 111, .22) 47% 53%, transparent 53%),
+        linear-gradient(90deg, transparent 47%, rgba(8, 120, 111, .22) 47% 53%, transparent 53%);
+      opacity: .82;
+    }
+
+    .hero-card h2 {
+      max-width: 230px;
+      font-size: 29px;
+      line-height: 1.02;
+    }
+
+    .hero-card p {
+      max-width: 250px;
+      margin-top: 10px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .login-form {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .input,
+    .textarea,
+    .select {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      outline: 0;
+      background: rgba(251, 253, 252, .82);
+      color: var(--ink);
+      padding: 0 14px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .78);
+    }
+
+    .textarea {
+      min-height: 102px;
+      resize: none;
+      padding-top: 12px;
+      line-height: 1.55;
+    }
+
+    .input:focus,
+    .textarea:focus,
+    .select:focus {
+      border-color: rgba(8, 120, 111, .72);
+      box-shadow: 0 0 0 3px rgba(8, 120, 111, .14);
+    }
+
+    .primary-btn {
+      width: 100%;
+      border-radius: 17px;
+      background: var(--accent);
+      color: white;
+      font-weight: 800;
+      box-shadow: 0 12px 24px rgba(8, 120, 111, .22);
+    }
+
+    .ghost-btn {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(251, 253, 252, .72);
+      color: var(--ink-soft);
+      font-weight: 720;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin: 8px 0 14px;
+    }
+
+    .metric {
+      min-height: 72px;
+      padding: 12px 10px;
+      border: 1px solid rgba(220, 232, 229, .9);
+      border-radius: 19px;
+      background: rgba(251, 253, 252, .68);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    .quick-add {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px;
+      border: 1px solid rgba(198, 214, 210, .74);
+      border-radius: 20px;
+      background: rgba(251, 253, 252, .84);
+      box-shadow: 0 10px 24px rgba(31, 56, 51, .08);
+      backdrop-filter: blur(14px);
+    }
+
+    .quick-add .input {
+      min-height: 38px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      box-shadow: none;
+      padding: 0 2px;
+    }
+
+    .small-btn {
+      min-width: 42px;
+      padding: 0 12px;
+      border-radius: 13px;
+      background: var(--accent);
+      color: white;
+      font-weight: 780;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 16px 0 9px;
+    }
+
+    .section-head h3 {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .section-head span {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .task-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) auto;
+      gap: 9px;
+      align-items: start;
+      min-height: 78px;
+      padding: 12px;
+      border: 1px solid rgba(220, 232, 229, .96);
+      border-left: 4px solid var(--line-strong);
+      border-radius: 20px;
+      background: rgba(251, 253, 252, .78);
+      box-shadow: 0 8px 18px rgba(31, 56, 51, .06);
+    }
+
+    .task-card.high { border-left-color: var(--danger); }
+    .task-card.mid { border-left-color: var(--warn); }
+    .task-card.low { border-left-color: var(--success); }
+    .task-card.blue { border-left-color: var(--blue); }
+
+    .task-card.done {
+      opacity: .72;
+      background: rgba(244, 249, 247, .72);
+    }
+
+    .task-card.done .task-title {
+      color: var(--muted);
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+
+    .check-btn {
+      width: 38px;
+      min-height: 38px;
+      border: 1.5px solid var(--line-strong);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .64);
+      color: transparent;
+      font-weight: 900;
+    }
+
+    .done .check-btn {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+
+    .task-title {
+      display: -webkit-box;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 770;
+      line-height: 1.35;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: max-content;
+      min-height: 26px;
+      padding: 0 9px;
+      border: 1px solid rgba(198, 214, 210, .76);
+      border-radius: 999px;
+      background: rgba(238, 245, 243, .84);
+      color: var(--ink-soft);
+      font-size: 11px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .chip.accent {
+      border-color: rgba(8, 120, 111, .24);
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+    }
+
+    .chip.danger {
+      border-color: rgba(178, 58, 49, .2);
+      background: #ffe8e4;
+      color: #8d2d27;
+    }
+
+    .chip.warn {
+      border-color: rgba(173, 116, 23, .22);
+      background: #fff2d9;
+      color: #6f4b12;
+    }
+
+    .chip.success {
+      border-color: rgba(22, 130, 86, .2);
+      background: #e2f5ec;
+      color: #126340;
+    }
+
+    .task-chevron {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      z-index: 10;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      height: 72px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      padding: 7px;
+      border: 1px solid rgba(198, 214, 210, .78);
+      border-radius: 25px;
+      background: rgba(251, 253, 252, .82);
+      box-shadow: 0 18px 34px rgba(31, 56, 51, .16);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-item {
+      display: grid;
+      place-items: center;
+      gap: 1px;
+      border-radius: 18px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .nav-item i {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 23px;
+      font-style: normal;
+      font-size: 16px;
+    }
+
+    .nav-item.active {
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+    }
+
+    .fab {
+      position: absolute;
+      z-index: 11;
+      right: 24px;
+      bottom: 96px;
+      width: 58px;
+      min-height: 58px;
+      border-radius: 20px;
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 16px 32px rgba(8, 120, 111, .28);
+      font-size: 25px;
+      font-weight: 760;
+    }
+
+    .calendar-card {
+      overflow: hidden;
+      border: 1px solid rgba(220, 232, 229, .92);
+      border-radius: 24px;
+      background: rgba(251, 253, 252, .76);
+      box-shadow: 0 10px 22px rgba(31, 56, 51, .07);
+    }
+
+    .calendar-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 13px 10px;
+      border-bottom: 1px solid rgba(220, 232, 229, .78);
+    }
+
+    .calendar-toolbar strong {
+      font-size: 16px;
+      font-weight: 840;
+    }
+
+    .calendar-toolbar span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 720;
+    }
+
+    .weekday-row,
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+    }
+
+    .weekday-row {
+      padding: 8px 8px 5px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .calendar-grid {
+      gap: 4px;
+      padding: 0 8px 10px;
+    }
+
+    .calendar-day {
+      position: relative;
+      min-height: 48px;
+      display: grid;
+      align-content: start;
+      gap: 3px;
+      padding: 6px 4px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--ink-soft);
+      font-size: 11px;
+      font-weight: 780;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .calendar-day.muted {
+      color: #a8b2af;
+    }
+
+    .calendar-day.today {
+      border-color: rgba(8, 120, 111, .2);
+      background: var(--accent-wash);
+      color: var(--accent-deep);
+    }
+
+    .calendar-day.selected {
+      border-color: rgba(8, 120, 111, .42);
+      background: var(--accent-soft);
+      box-shadow: inset 0 0 0 1px rgba(8, 120, 111, .08);
+    }
+
+    .day-number {
+      display: block;
+      line-height: 1;
+    }
+
+    .day-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      min-height: 8px;
+    }
+
+    .day-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .day-dot.high { background: var(--danger); }
+    .day-dot.mid { background: var(--warn); }
+    .day-dot.low { background: var(--success); }
+
+    .range-lane {
+      display: grid;
+      gap: 6px;
+      padding: 0 12px 12px;
+    }
+
+    .range-bar {
+      min-height: 27px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border: 1px solid rgba(8, 120, 111, .16);
+      border-radius: 999px;
+      background: var(--accent-wash);
+      color: var(--accent-deep);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .range-bar.warn {
+      border-color: rgba(173, 116, 23, .2);
+      background: #fff7e9;
+      color: #6f4b12;
+    }
+
+    .range-bar span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .range-bar small {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .selected-day-card {
+      margin-top: 12px;
+      padding: 13px;
+      border: 1px solid rgba(220, 232, 229, .92);
+      border-radius: 23px;
+      background: rgba(251, 253, 252, .74);
+      box-shadow: 0 8px 18px rgba(31, 56, 51, .06);
+    }
+
+    .selected-day-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .selected-day-head strong {
+      font-size: 15px;
+      font-weight: 840;
+    }
+
+    .mini-task {
+      display: grid;
+      grid-template-columns: 7px minmax(0, 1fr) auto;
+      gap: 9px;
+      align-items: center;
+      min-height: 44px;
+      padding: 9px 0;
+      border-top: 1px solid rgba(220, 232, 229, .76);
+    }
+
+    .mini-task:first-of-type {
+      border-top: 0;
+    }
+
+    .mini-task i {
+      width: 7px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .mini-task i.high { background: var(--danger); }
+    .mini-task i.mid { background: var(--warn); }
+
+    .mini-task strong {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-task span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .tab-row {
+      display: flex;
+      gap: 8px;
+      overflow: hidden;
+      margin: 0 0 13px;
+    }
+
+    .tab-pill {
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 0 13px;
+      border-radius: 999px;
+      background: rgba(251, 253, 252, .66);
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 740;
+    }
+
+    .tab-pill.active {
+      background: var(--ink);
+      color: white;
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 252px;
+      padding: 28px 18px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 26px;
+      background:
+        linear-gradient(180deg, rgba(251, 253, 252, .58), rgba(238, 245, 243, .68));
+      text-align: center;
+    }
+
+    .empty-mark {
+      width: 68px;
+      height: 68px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 15px;
+      border-radius: 23px;
+      background: var(--surface-2);
+      color: var(--accent);
+      font-size: 28px;
+      font-weight: 850;
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 820;
+    }
+
+    .empty-state p {
+      max-width: 260px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .detail-phone .phone-inner,
+    .edit-phone .phone-inner {
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .detail-header {
+      padding: 4px 18px 10px;
+      border-bottom: 1px solid rgba(220, 232, 229, .8);
+      background: rgba(251, 253, 252, .58);
+      backdrop-filter: blur(14px);
+    }
+
+    .detail-title {
+      margin-top: 16px;
+      font-size: 28px;
+      line-height: 1.12;
+      font-weight: 820;
+      text-wrap: balance;
+    }
+
+    .detail-content {
+      display: grid;
+      gap: 14px;
+      overflow: hidden auto;
+      padding: 16px 18px 24px;
+      scrollbar-width: none;
+    }
+
+    .detail-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .property-panel,
+    .note-panel,
+    .project-card,
+    .settings-panel {
+      border: 1px solid rgba(220, 232, 229, .92);
+      border-radius: 23px;
+      background: rgba(251, 253, 252, .74);
+      box-shadow: 0 8px 18px rgba(31, 56, 51, .06);
+    }
+
+    .property-panel {
+      display: grid;
+      overflow: hidden;
+    }
+
+    .property-row {
+      min-height: 50px;
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(220, 232, 229, .8);
+    }
+
+    .property-row:last-child {
+      border-bottom: 0;
+    }
+
+    .property-row .meta-label {
+      text-transform: none;
+      letter-spacing: 0;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .property-value {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .note-panel {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 820;
+    }
+
+    .note-panel p {
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.66;
+    }
+
+    .subtask-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .subtask {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+      min-height: 34px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .tiny-check {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: transparent;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .subtask.done .tiny-check {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+
+    .subtask.done span:last-child {
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+
+    .action-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr 50px;
+      gap: 9px;
+      margin-top: 4px;
+    }
+
+    .action-bar .ghost-btn,
+    .action-bar .primary-btn {
+      min-height: 48px;
+    }
+
+    .danger-icon {
+      min-height: 48px;
+      border: 1px solid rgba(178, 58, 49, .22);
+      border-radius: 16px;
+      background: #ffe8e4;
+      color: var(--danger);
+      font-weight: 900;
+    }
+
+    .form-sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 12;
+      max-height: 754px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      border-radius: 32px 32px 0 0;
+      background: rgba(251, 253, 252, .96);
+      box-shadow: 0 -22px 60px rgba(31, 56, 51, .2);
+    }
+
+    .sheet-handle {
+      width: 42px;
+      height: 5px;
+      margin: 10px auto 4px;
+      border-radius: 999px;
+      background: var(--line-strong);
+    }
+
+    .sheet-toolbar {
+      justify-content: space-between;
+      padding: 4px 18px 12px;
+      border-bottom: 1px solid rgba(220, 232, 229, .85);
+    }
+
+    .sheet-toolbar h2 {
+      font-size: 22px;
+      font-weight: 790;
+    }
+
+    .sheet-body {
+      display: grid;
+      gap: 14px;
+      overflow: hidden auto;
+      padding: 16px 18px 20px;
+      scrollbar-width: none;
+    }
+
+    .sheet-body::-webkit-scrollbar {
+      display: none;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+      padding: 5px;
+      border-radius: 17px;
+      background: var(--surface-2);
+    }
+
+    .segmented .tab-pill {
+      min-height: 34px;
+      padding: 0 6px;
+      background: transparent;
+      font-size: 11px;
+    }
+
+    .segmented .tab-pill.active {
+      background: var(--surface);
+      color: var(--accent-deep);
+      box-shadow: 0 5px 12px rgba(31, 56, 51, .08);
+    }
+
+    .project-list,
+    .settings-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .project-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .project-row {
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .project-main {
+      min-width: 0;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .project-dot {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(8, 120, 111, .12);
+    }
+
+    .project-dot.green {
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(22, 130, 86, .12);
+    }
+
+    .project-dot.warn {
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(173, 116, 23, .14);
+    }
+
+    .project-title {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .project-desc {
+      display: -webkit-box;
+      overflow: hidden;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .project-count {
+      min-width: 36px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--ink-soft);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .progress {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--surface-3);
+    }
+
+    .progress i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .settings-panel {
+      overflow: hidden;
+    }
+
+    .setting-row {
+      min-height: 68px;
+      padding: 13px 14px;
+      border-bottom: 1px solid rgba(220, 232, 229, .82);
+      justify-content: space-between;
+    }
+
+    .setting-row:last-child {
+      border-bottom: 0;
+    }
+
+    .setting-main {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .setting-icon {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 15px;
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+      font-weight: 850;
+    }
+
+    .setting-copy strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .setting-copy span {
+      display: block;
+      max-width: 218px;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .switch {
+      width: 46px;
+      height: 28px;
+      flex: 0 0 46px;
+      border-radius: 999px;
+      background: var(--line-strong);
+      padding: 3px;
+    }
+
+    .switch::before {
+      content: "";
+      display: block;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 2px 6px rgba(31, 56, 51, .18);
+    }
+
+    .switch.on {
+      background: var(--accent);
+    }
+
+    .switch.on::before {
+      transform: translateX(18px);
+    }
+
+    .scope-note {
+      margin-top: 12px;
+      padding: 13px 14px;
+      border: 1px solid rgba(173, 116, 23, .18);
+      border-radius: 18px;
+      background: #fff8ec;
+      color: #6f4b12;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .two-stack {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 18px;
+      height: var(--phone-h);
+    }
+
+    .half-phone {
+      position: relative;
+      width: var(--phone-w);
+      min-height: 413px;
+      overflow: hidden;
+      border: 10px solid #16211f;
+      border-radius: 48px;
+      background: var(--bg);
+      box-shadow: var(--shadow);
+    }
+
+    .half-phone::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 8px;
+      left: 50%;
+      width: 112px;
+      height: 24px;
+      transform: translateX(-50%);
+      border-radius: 0 0 18px 18px;
+      background: #16211f;
+    }
+
+    .half-phone .phone-inner {
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .half-phone .content {
+      padding-bottom: 18px;
+    }
+
+    @media (max-width: 920px) {
+      .page {
+        padding-inline: 18px;
+      }
+
+      .brief {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 450px) {
+      :root {
+        --phone-w: min(390px, calc(100vw - 24px));
+      }
+
+      .page {
+        padding: 22px 12px 40px;
+      }
+
+      .brief-card {
+        padding: 20px;
+      }
+
+      .board {
+        grid-template-columns: 1fr;
+      }
+
+      .phone,
+      .half-phone {
+        border-width: 8px;
+        border-radius: 42px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="brief" aria-labelledby="page-title">
+      <div class="brief-card">
+        <p class="brief-kicker">ANDROID DESIGN BOARD · native compose target</p>
+        <h1 id="page-title">个人 TODO Android 设计稿</h1>
+        <p class="brief-copy">这套稿覆盖 Android 日常最高频路径：登录、今日、收件箱/列表、日历、任务详情、新建编辑、项目、更多/设置。视觉延续 Web 原型的安静个人效率工作台，但控件尺寸、底部导航、FAB、触控密度按 Android 原生实现考虑。</p>
+        <div class="swatches" aria-label="颜色 token">
+          <span class="swatch" style="background:#f3f7f6"></span>
+          <span class="swatch" style="background:#fbfdfc"></span>
+          <span class="swatch" style="background:#08786f"></span>
+          <span class="swatch" style="background:#ad7417"></span>
+          <span class="swatch" style="background:#b23a31"></span>
+        </div>
+      </div>
+      <div class="brief-card token-grid" aria-label="设计规则">
+        <div class="token-card"><span class="token-label">tone</span><strong>冷静浅色底 + 低饱和青绿强调，避免紫蓝渐变和营销化 hero。</strong></div>
+        <div class="token-card"><span class="token-label">layout</span><strong>390 x 844 手机画板；顶部栏、内容区、底部导航、右下 FAB。</strong></div>
+        <div class="token-card"><span class="token-label">touch</span><strong>主要可点区域不低于 44dp，任务卡高度约 78-94dp。</strong></div>
+        <div class="token-card"><span class="token-label">compose mapping</span><strong>后续拆为 TodoTheme、TaskCard、CalendarMonth、StatusBanner、BottomNav、TaskSheet。</strong></div>
+      </div>
+    </section>
+
+    <section class="board" aria-label="Android 设计稿画板">
+      <article class="screen-card">
+        <div class="screen-label"><strong>01 登录</strong><span>server + account</span></div>
+        <div class="phone login">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <section class="content" style="display:grid;align-content:start;padding-top:22px;">
+              <div class="hero-card">
+                <p class="eyebrow">SELF-HOSTED TODO</p>
+                <h2>把任务放回自己的服务里。</h2>
+                <p>Android 端保持在线优先，登录后同步现有任务、项目和本地提醒。</p>
+              </div>
+              <form class="login-form">
+                <div class="field">
+                  <label for="server-url">服务端地址</label>
+                  <input id="server-url" class="input" value="http://10.0.2.2:38887" autocomplete="url" />
+                </div>
+                <div class="sync-strip">内网 HTTP 可用；公网建议使用 HTTPS。</div>
+                <div class="field">
+                  <label for="username">用户名</label>
+                  <input id="username" class="input" value="self-hosted-user" autocomplete="username" />
+                </div>
+                <div class="field">
+                  <label for="password">密码</label>
+                  <input id="password" class="input" type="password" value="todo123456" autocomplete="current-password" />
+                </div>
+                <button class="primary-btn" type="button">登录并同步</button>
+                <div class="error-strip">服务端地址无法访问，请检查网络或端口。</div>
+              </form>
+            </section>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>02 今日任务</strong><span>default workspace</span></div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <header class="top-app">
+              <div class="title-row">
+                <div class="title-copy">
+                  <p class="eyebrow">TODAY · 6 TASKS</p>
+                  <h2 class="app-title">今日</h2>
+                  <p class="title-sub">在线 · 09:37 已同步</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="同步">↻</button>
+              </div>
+              <div class="sync-strip">今天 2 项高优先级，1 项提醒将在 30 分钟后开始。</div>
+            </header>
+            <section class="content has-bottom-nav">
+              <div class="metric-row">
+                <div class="metric"><strong>6</strong><span>今日待办</span></div>
+                <div class="metric"><strong>2</strong><span>已过期</span></div>
+                <div class="metric"><strong>3</strong><span>本地提醒</span></div>
+              </div>
+              <div class="quick-add">
+                <input class="input" value="" placeholder="快速添加任务" />
+                <button class="small-btn" type="button">加</button>
+              </div>
+              <div class="section-head"><h3>上午</h3><span>3 项</span></div>
+              <div class="task-list">
+                <article class="task-card high">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">处理 Android 设计稿：长标题换行但不能挤压右侧状态图标</strong>
+                    <div class="task-meta"><span class="chip danger">已过期</span><span class="chip">个人系统</span><span class="chip">2/4 子任务</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+                <article class="task-card mid">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">同步提醒权限文案</strong>
+                    <div class="task-meta"><span class="chip warn">10:30</span><span class="chip">设置</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+                <article class="task-card done">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">确认 Android v1 功能边界</strong>
+                    <div class="task-meta"><span class="chip success">已完成</span><span class="chip">无项目</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+              </div>
+              <div class="section-head"><h3>下午</h3><span>3 项</span></div>
+              <div class="task-list">
+                <article class="task-card low">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">整理 Compose 组件拆分清单</strong>
+                    <div class="task-meta"><span class="chip accent">今天</span><span class="chip">开发</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+              </div>
+            </section>
+            <button class="fab" type="button" aria-label="新建任务">＋</button>
+            <nav class="bottom-nav" aria-label="底部导航">
+              <button class="nav-item active" type="button"><i>⌂</i><span>今日</span></button>
+              <button class="nav-item" type="button"><i>▣</i><span>收件箱</span></button>
+              <button class="nav-item" type="button"><i>▦</i><span>日历</span></button>
+              <button class="nav-item" type="button"><i>●</i><span>项目</span></button>
+              <button class="nav-item" type="button"><i>⋯</i><span>更多</span></button>
+            </nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>03 收件箱 / 空状态</strong><span>list + offline</span></div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <header class="top-app">
+              <div class="title-row">
+                <div class="title-copy">
+                  <p class="eyebrow">INBOX · CAPTURE</p>
+                  <h2 class="app-title">收件箱</h2>
+                  <p class="title-sub">离线 · 只读缓存</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="同步">↻</button>
+              </div>
+              <div class="offline-strip">当前离线，任务可以查看，但不能保存修改。</div>
+            </header>
+            <section class="content has-bottom-nav">
+              <div class="tab-row">
+                <button class="tab-pill active" type="button">未整理 4</button>
+                <button class="tab-pill" type="button">无日期</button>
+                <button class="tab-pill" type="button">含附件</button>
+              </div>
+              <div class="task-list">
+                <article class="task-card blue">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">把 PWA 安装提示写进设置页</strong>
+                    <div class="task-meta"><span class="chip">无项目</span><span class="chip">刚刚</span><span class="chip">PWA</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+                <article class="task-card high">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">记录附件 ZIP 匹配不到元数据的错误状态</strong>
+                    <div class="task-meta"><span class="chip danger">高</span><span class="chip">附件</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+              </div>
+              <div class="section-head"><h3>空状态预览</h3><span>清空后</span></div>
+              <div class="empty-state">
+                <div>
+                  <div class="empty-mark">✓</div>
+                  <h3>收件箱已清空</h3>
+                  <p>新的想法仍可以先放到这里；同步恢复后再移动项目或设置日期。</p>
+                </div>
+              </div>
+            </section>
+            <button class="fab" type="button" aria-label="新建任务">＋</button>
+            <nav class="bottom-nav" aria-label="底部导航">
+              <button class="nav-item" type="button"><i>⌂</i><span>今日</span></button>
+              <button class="nav-item active" type="button"><i>▣</i><span>收件箱</span></button>
+              <button class="nav-item" type="button"><i>▦</i><span>日历</span></button>
+              <button class="nav-item" type="button"><i>●</i><span>项目</span></button>
+              <button class="nav-item" type="button"><i>⋯</i><span>更多</span></button>
+            </nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>04 日历月视图</strong><span>most used view</span></div>
+        <div class="phone">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <header class="top-app">
+              <div class="title-row">
+                <div class="title-copy">
+                  <p class="eyebrow">CALENDAR · MONTH</p>
+                  <h2 class="app-title">日历</h2>
+                  <p class="title-sub">已选 2026年6月19日 · 新建默认这天</p>
+                </div>
+                <button class="icon-btn" type="button" aria-label="回到今天">今</button>
+              </div>
+              <div class="tab-row" style="margin:0;">
+                <button class="tab-pill" type="button">周</button>
+                <button class="tab-pill active" type="button">月</button>
+                <button class="tab-pill" type="button">范围任务 3</button>
+              </div>
+            </header>
+            <section class="content has-bottom-nav">
+              <div class="calendar-card">
+                <div class="calendar-toolbar">
+                  <button class="icon-btn flat" type="button" aria-label="上个月">‹</button>
+                  <div style="text-align:center;"><strong>2026年6月</strong><span>上下滑动切换月份</span></div>
+                  <button class="icon-btn flat" type="button" aria-label="下个月">›</button>
+                </div>
+                <div class="weekday-row"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+                <div class="calendar-grid">
+                  <div class="calendar-day muted"><span class="day-number">1</span></div>
+                  <div class="calendar-day muted"><span class="day-number">2</span></div>
+                  <div class="calendar-day muted"><span class="day-number">3</span></div>
+                  <div class="calendar-day"><span class="day-number">4</span><span class="day-dots"><i class="day-dot low"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">5</span></div>
+                  <div class="calendar-day"><span class="day-number">6</span><span class="day-dots"><i class="day-dot mid"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">7</span></div>
+                  <div class="calendar-day"><span class="day-number">8</span></div>
+                  <div class="calendar-day"><span class="day-number">9</span><span class="day-dots"><i class="day-dot"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">10</span></div>
+                  <div class="calendar-day"><span class="day-number">11</span><span class="day-dots"><i class="day-dot high"></i><i class="day-dot"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">12</span></div>
+                  <div class="calendar-day"><span class="day-number">13</span></div>
+                  <div class="calendar-day"><span class="day-number">14</span></div>
+                  <div class="calendar-day"><span class="day-number">15</span><span class="day-dots"><i class="day-dot low"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">16</span></div>
+                  <div class="calendar-day"><span class="day-number">17</span></div>
+                  <div class="calendar-day"><span class="day-number">18</span><span class="day-dots"><i class="day-dot high"></i><i class="day-dot mid"></i></span></div>
+                  <div class="calendar-day today selected"><span class="day-number">19</span><span class="day-dots"><i class="day-dot high"></i><i class="day-dot"></i><i class="day-dot low"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">20</span><span class="day-dots"><i class="day-dot"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">21</span></div>
+                  <div class="calendar-day"><span class="day-number">22</span></div>
+                  <div class="calendar-day"><span class="day-number">23</span><span class="day-dots"><i class="day-dot mid"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">24</span></div>
+                  <div class="calendar-day"><span class="day-number">25</span></div>
+                  <div class="calendar-day"><span class="day-number">26</span><span class="day-dots"><i class="day-dot low"></i></span></div>
+                  <div class="calendar-day"><span class="day-number">27</span></div>
+                  <div class="calendar-day"><span class="day-number">28</span></div>
+                  <div class="calendar-day"><span class="day-number">29</span></div>
+                  <div class="calendar-day"><span class="day-number">30</span><span class="day-dots"><i class="day-dot"></i></span></div>
+                  <div class="calendar-day muted"><span class="day-number">1</span></div>
+                  <div class="calendar-day muted"><span class="day-number">2</span></div>
+                  <div class="calendar-day muted"><span class="day-number">3</span></div>
+                  <div class="calendar-day muted"><span class="day-number">4</span></div>
+                  <div class="calendar-day muted"><span class="day-number">5</span></div>
+                </div>
+                <div class="range-lane">
+                  <div class="range-bar"><span>Android 美化实现窗口</span><small>6/18-6/20</small></div>
+                  <div class="range-bar warn"><span>服务器维护准备</span><small>6/23-6/26</small></div>
+                </div>
+              </div>
+              <div class="selected-day-card">
+                <div class="selected-day-head">
+                  <strong>6月19日 · 周五</strong>
+                  <button class="chip accent" type="button">在这天新建</button>
+                </div>
+                <div class="mini-task"><i class="high"></i><div><strong>处理 Android 日历月视图</strong><span>高优先级 · 个人系统</span></div><span class="chip danger">今天</span></div>
+                <div class="mini-task"><i></i><div><strong>把范围任务整体移动到下周</strong><span>范围 6/18 - 6/20</span></div><span class="chip">拖动</span></div>
+                <div class="mini-task"><i class="mid"></i><div><strong>复查日历每日显示条数</strong><span>设置 · 3 条可见</span></div><span class="chip warn">中</span></div>
+              </div>
+            </section>
+            <button class="fab" type="button" aria-label="为选中日期新建任务">＋</button>
+            <nav class="bottom-nav" aria-label="底部导航">
+              <button class="nav-item" type="button"><i>⌂</i><span>今日</span></button>
+              <button class="nav-item" type="button"><i>▣</i><span>收件箱</span></button>
+              <button class="nav-item active" type="button"><i>▦</i><span>日历</span></button>
+              <button class="nav-item" type="button"><i>●</i><span>项目</span></button>
+              <button class="nav-item" type="button"><i>⋯</i><span>更多</span></button>
+            </nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>05 任务详情</strong><span>full screen sheet</span></div>
+        <div class="phone detail-phone">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <header class="detail-header">
+              <div class="title-row">
+                <button class="icon-btn flat" type="button" aria-label="返回">‹</button>
+                <div class="task-action-row">
+                  <button class="icon-btn flat" type="button" aria-label="编辑">✎</button>
+                  <button class="icon-btn flat" type="button" aria-label="更多">⋯</button>
+                </div>
+              </div>
+              <h2 class="detail-title">处理 Android 设计稿：长标题换行但不能挤压右侧状态图标</h2>
+            </header>
+            <section class="detail-content">
+              <div class="property-panel">
+                <div class="property-row"><span class="meta-label">日期</span><div class="property-value"><span class="chip danger">已过期</span><span class="chip">6月18日</span></div></div>
+                <div class="property-row"><span class="meta-label">优先级</span><div class="property-value"><span class="chip danger">高</span></div></div>
+                <div class="property-row"><span class="meta-label">项目</span><div class="property-value">个人系统</div></div>
+                <div class="property-row"><span class="meta-label">提醒</span><div class="property-value">今天 10:30 - 11:00</div></div>
+                <div class="property-row"><span class="meta-label">标签</span><div class="property-value"><span class="chip">Android</span><span class="chip">设计</span></div></div>
+              </div>
+              <div class="note-panel">
+                <div class="panel-title">描述 <span class="chip">Markdown</span></div>
+                <p>设计稿用于后续 Compose 实现。优先保证任务列表、详情、编辑弹层这些日常路径可读、可点、可维护。</p>
+              </div>
+              <div class="note-panel">
+                <div class="panel-title">子任务 <span class="chip accent">2/4</span></div>
+                <div class="subtask-list">
+                  <div class="subtask done"><span class="tiny-check">✓</span><span>确认 Android v1 范围</span></div>
+                  <div class="subtask done"><span class="tiny-check">✓</span><span>定义主题 token</span></div>
+                  <div class="subtask"><span class="tiny-check">✓</span><span>检查 390 与 430 宽度画板</span></div>
+                  <div class="subtask"><span class="tiny-check">✓</span><span>补齐更多页 Web-only 功能说明</span></div>
+                </div>
+              </div>
+              <div class="sync-strip">这个任务有 2 个附件；Android v1 仅展示数量，文件请在 Web 端管理。</div>
+              <div class="action-bar">
+                <button class="primary-btn" type="button">完成</button>
+                <button class="ghost-btn" type="button">关闭</button>
+                <button class="danger-icon" type="button" aria-label="删除">⌫</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>06 新建 / 编辑</strong><span>bottom sheet form</span></div>
+        <div class="phone edit-phone">
+          <div class="phone-inner">
+            <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+            <header class="top-app">
+              <div class="title-row">
+                <div class="title-copy">
+                  <p class="eyebrow">TODAY · CREATE</p>
+                  <h2 class="app-title">今日</h2>
+                  <p class="title-sub">新建任务会带入当前项目或列表上下文</p>
+                </div>
+                <button class="icon-btn" type="button">↻</button>
+              </div>
+            </header>
+            <section class="content">
+              <div class="task-list">
+                <article class="task-card low">
+                  <button class="check-btn" type="button">✓</button>
+                  <div>
+                    <strong class="task-title">整理 Compose 组件拆分清单</strong>
+                    <div class="task-meta"><span class="chip accent">今天</span><span class="chip">开发</span></div>
+                  </div>
+                  <span class="task-chevron">›</span>
+                </article>
+              </div>
+            </section>
+            <section class="form-sheet" aria-label="新建任务">
+              <div class="sheet-handle"></div>
+              <div class="sheet-toolbar">
+                <button class="icon-btn flat" type="button">×</button>
+                <h2>新建任务</h2>
+                <button class="icon-btn flat" type="button">✓</button>
+              </div>
+              <div class="sheet-body">
+                <div class="field">
+                  <label>标题</label>
+                  <input class="input" value="补齐 Android 任务详情视觉状态" />
+                </div>
+                <div class="field">
+                  <label>描述</label>
+                  <textarea class="textarea">需要覆盖完成、关闭、删除、离线只读和附件数量提示。</textarea>
+                </div>
+                <div class="field">
+                  <label>日期</label>
+                  <div class="mini-row">
+                    <input class="input" value="2026-06-19" />
+                    <input class="input" value="2026-06-20" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>优先级</label>
+                  <div class="segmented">
+                    <button class="tab-pill" type="button">无</button>
+                    <button class="tab-pill" type="button">低</button>
+                    <button class="tab-pill active" type="button">中</button>
+                    <button class="tab-pill" type="button">高</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>项目</label>
+                  <select class="select"><option>个人系统</option><option>收件箱</option><option>Android</option></select>
+                </div>
+                <div class="field">
+                  <label>标签</label>
+                  <div class="task-meta"><span class="chip accent">Android</span><span class="chip">设计</span><span class="chip">+ 添加</span></div>
+                </div>
+                <div class="field">
+                  <label>子任务，每行一个</label>
+                  <textarea class="textarea">登录页
+今日列表
+任务详情</textarea>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="screen-label"><strong>07 项目 / 更多</strong><span>scope guard</span></div>
+        <div class="two-stack">
+          <div class="half-phone">
+            <div class="phone-inner">
+              <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+              <header class="top-app">
+                <div class="title-row">
+                  <div class="title-copy">
+                    <p class="eyebrow">PROJECTS · ACTIVE</p>
+                    <h2 class="app-title">项目</h2>
+                    <p class="title-sub">只展示未归档项目</p>
+                  </div>
+                  <button class="icon-btn" type="button">＋</button>
+                </div>
+              </header>
+              <section class="content">
+                <div class="project-list">
+                  <article class="project-card">
+                    <div class="project-row">
+                      <div class="project-main"><span class="project-dot"></span><span><strong class="project-title">个人系统</strong><span class="project-desc">健康、账单、设备维护和个人规划集中处理。</span></span></div>
+                      <span class="project-count">9</span>
+                    </div>
+                    <div class="progress"><i style="width:62%"></i></div>
+                  </article>
+                  <article class="project-card">
+                    <div class="project-row">
+                      <div class="project-main"><span class="project-dot green"></span><span><strong class="project-title">Open Design</strong><span class="project-desc">原型、设计稿和实现映射。</span></span></div>
+                      <span class="project-count">5</span>
+                    </div>
+                    <div class="progress"><i style="width:44%;background:var(--success)"></i></div>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+          <div class="half-phone">
+            <div class="phone-inner">
+              <div class="status-bar"><span>09:41</span><span class="system-icons"><span class="signal"></span><span>5G</span><span class="battery"></span></span></div>
+              <header class="top-app">
+                <div class="title-row">
+                  <div class="title-copy">
+                    <p class="eyebrow">MORE · SETTINGS</p>
+                    <h2 class="app-title">更多</h2>
+                    <p class="title-sub">服务端、同步、通知和版本范围</p>
+                  </div>
+                  <button class="icon-btn" type="button">↻</button>
+                </div>
+              </header>
+              <section class="content">
+                <div class="settings-list">
+                  <div class="settings-panel">
+                    <div class="setting-row">
+                      <div class="setting-main"><span class="setting-icon">S</span><span class="setting-copy"><strong>服务端</strong><span>http://10.0.2.2:38887</span></span></div>
+                      <span class="task-chevron">›</span>
+                    </div>
+                    <div class="setting-row">
+                      <div class="setting-main"><span class="setting-icon">↻</span><span class="setting-copy"><strong>同步状态</strong><span>在线 · 09:37 已同步</span></span></div>
+                      <span class="chip success">正常</span>
+                    </div>
+                    <div class="setting-row">
+                      <div class="setting-main"><span class="setting-icon">N</span><span class="setting-copy"><strong>本地提醒</strong><span>权限已开启，同步后重建</span></span></div>
+                      <span class="switch on"></span>
+                    </div>
+                  </div>
+                  <div class="scope-note">v1 Android 端保留日常任务管理，并把日历作为一级入口。附件、导入导出、统计、四象限和智能过滤器继续在 Web 端管理。</div>
+                  <button class="ghost-btn" type="button">退出登录</button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
