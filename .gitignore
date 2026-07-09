@@ -11,3 +11,5 @@ output/
 app/android/.gradle/
 app/android/.kotlin/
 app/android/app/build/
+.od-skills
+public/dist

@@ -72,6 +72,7 @@ import {
 import { buildReportSummary } from './lib/reports.ts';
 import { appendSubtasks } from './lib/subtasks.ts';
 import { preserveTaskCreateContext } from './lib/taskCreate.ts';
+import { isImeEnter, shouldSaveTextDraft, subtaskDraftKey, syncSubtaskDrafts } from './lib/textInput.ts';
 import { fileExtension, formatBytes, groupLabel, priorityLabel, priorityMeta, settingsPanelLabel, sortLabel, themeLabel } from './lib/format.ts';
 import './styles/app.css';
 
@@ -84,6 +85,13 @@ const SETTINGS_PANELS = ['account', 'appearance', 'notifications', 'data', 'atta
 type StatItem = { value: string | number; label: string };
 type ViewGroup = { id?: string; title: string; tasks: Task[]; tone?: 'danger' | 'success' | 'warn' | 'muted' | 'accent' | '' };
 type ReadyState = ClientState & { data: PublicData };
+type ImeSubmitGuard = {
+  onCompositionStart(): void;
+  onCompositionEnd(): void;
+  onKeyDown(event: { key: string; nativeEvent: { isComposing?: boolean; keyCode?: number } }): void;
+  shouldBlockSubmit(): boolean;
+  reset(): void;
+};
 
 function isoDay(value?: string | null) {
   return String(value || '').slice(0, 10);
@@ -111,6 +119,50 @@ function attachmentExternalUrl(file: Attachment, settings: PublicData['settings'
   if (!baseUrl || !paramKey || !relativePath) return '';
   const separator = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${separator}${encodeURIComponent(paramKey)}=${encodeURIComponent(relativePath)}`;
+}
+
+function useImeSubmitGuard(): ImeSubmitGuard {
+  const composingRef = useRef(false);
+  const ignoreSubmitRef = useRef(false);
+  const ignoreSubmitTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (ignoreSubmitTimer.current) window.clearTimeout(ignoreSubmitTimer.current);
+    };
+  }, []);
+
+  const blockNextSubmit = () => {
+    ignoreSubmitRef.current = true;
+    if (ignoreSubmitTimer.current) window.clearTimeout(ignoreSubmitTimer.current);
+    ignoreSubmitTimer.current = window.setTimeout(() => {
+      ignoreSubmitRef.current = false;
+      ignoreSubmitTimer.current = null;
+    }, 0);
+  };
+
+  return {
+    onCompositionStart() {
+      composingRef.current = true;
+    },
+    onCompositionEnd() {
+      composingRef.current = false;
+      blockNextSubmit();
+    },
+    onKeyDown(event) {
+      if (isImeEnter(event.key, event.nativeEvent)) blockNextSubmit();
+    },
+    shouldBlockSubmit() {
+      return composingRef.current || ignoreSubmitRef.current;
+    },
+    reset() {
+      ignoreSubmitRef.current = false;
+      if (ignoreSubmitTimer.current) {
+        window.clearTimeout(ignoreSubmitTimer.current);
+        ignoreSubmitTimer.current = null;
+      }
+    },
+  };
 }
 
 export function App() {
@@ -737,9 +789,15 @@ function Stats({ items }: { items: StatItem[] }) {
 }
 
 function QuickAdd({ actions, placeholder, context }: { actions: AppActions; placeholder: string; context: Partial<CreateTaskDefaults> }) {
+  const imeGuard = useImeSubmitGuard();
+
   return (
     <form className="quick-add" onSubmit={async event => {
       event.preventDefault();
+      if (imeGuard.shouldBlockSubmit()) {
+        imeGuard.reset();
+        return;
+      }
       const form = new FormData(event.currentTarget);
       const title = String(form.get('title') || '').trim();
       if (!title) return;
@@ -750,9 +808,17 @@ function QuickAdd({ actions, placeholder, context }: { actions: AppActions; plac
         tagId: context.tagId || '',
         dueDate: context.dueDate || null,
       }, 'close');
+      imeGuard.reset();
       event.currentTarget.reset();
     }}>
-      <input name="title" autoComplete="off" placeholder={placeholder} />
+      <input
+        name="title"
+        autoComplete="off"
+        placeholder={placeholder}
+        onCompositionStart={() => imeGuard.onCompositionStart()}
+        onCompositionEnd={() => imeGuard.onCompositionEnd()}
+        onKeyDown={event => imeGuard.onKeyDown(event)}
+      />
       <span className="chip">{context.projectId ? '当前项目' : '收件箱'}</span>
       {context.dueDate ? <span className="chip">{shortDate(context.dueDate)}</span> : null}
       <button className="soft-button mobile-visible" type="submit">添加</button>
@@ -1483,12 +1549,58 @@ function notificationState() {
 function RightPanel({ state, actions, task }: { state: ReadyState; actions: AppActions; task: Task | null }) {
   if (state.rightPanelMode === 'create') return <CreateTaskPanel state={state} actions={actions} />;
   if (!task) return null;
+  return <TaskDetailPanel state={state} actions={actions} task={task} />;
+}
+
+function TaskDetailPanel({ state, actions, task }: { state: ReadyState; actions: AppActions; task: Task }) {
   const project = projectById(state.data, task.projectId);
+  const [titleDraft, setTitleDraft] = useState(task.title);
+  const [descriptionDraft, setDescriptionDraft] = useState(task.description || '');
+  const [subtaskDrafts, setSubtaskDrafts] = useState<Record<string, string>>(() => syncSubtaskDrafts(task.subtasks, {}));
+
+  useEffect(() => {
+    setTitleDraft(task.title);
+    setDescriptionDraft(task.description || '');
+    setSubtaskDrafts(syncSubtaskDrafts(task.subtasks, {}));
+  }, [task.id]);
+
+  useEffect(() => {
+    setSubtaskDrafts(current => {
+      const next = syncSubtaskDrafts(task.subtasks, current);
+      const currentKeys = Object.keys(current);
+      const nextKeys = Object.keys(next);
+      if (
+        currentKeys.length === nextKeys.length
+        && currentKeys.every(key => Object.prototype.hasOwnProperty.call(next, key) && next[key] === current[key])
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, [task.subtasks]);
+
+  const saveTitle = async () => {
+    if (!shouldSaveTextDraft(task.title, titleDraft)) return;
+    await actions.updateTask(task.id, { title: titleDraft }, { silent: true });
+  };
+
+  const saveDescription = async () => {
+    if (!shouldSaveTextDraft(task.description, descriptionDraft)) return;
+    await actions.updateTask(task.id, { description: descriptionDraft }, { silent: true });
+  };
+
+  const saveSubtaskTitle = async (subtask: Task['subtasks'][number]) => {
+    const key = subtaskDraftKey(subtask);
+    const draft = subtaskDrafts[key] ?? subtask.title;
+    if (!shouldSaveTextDraft(subtask.title, draft)) return;
+    await actions.updateSubtasks(task.id, task.subtasks.map(item => item === subtask ? { ...item, title: draft } : item));
+  };
+
   return (
     <aside className="right-panel drawer open">
       <div className="drawer-toolbar"><button className="icon-btn" type="button" onClick={() => actions.closePanel()}>×</button><span className="save-state">已保存</span><button className="icon-btn" type="button" onClick={() => actions.updateSettings({ dockDrawer: !state.data.settings.dockDrawer })}>⌖</button><button className="icon-btn" type="button" onClick={() => actions.deleteTask(task.id)}>⌫</button></div>
       <div className="drawer-content">
-        <textarea className="drawer-title" value={task.title} onChange={event => actions.updateTask(task.id, { title: event.target.value }, { silent: true })} />
+        <textarea className="drawer-title" value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onBlur={() => void saveTitle()} />
         <div className="property-grid">
           <label className="property"><span className="property-label">完成</span><span className="property-value"><input type="checkbox" checked={task.completed} onChange={() => actions.toggleTask(task.id)} /> {task.completed ? '已完成' : '未完成'}</span></label>
           <div className="property"><span className="property-label">关闭</span><span className="property-value"><button className={`switch ${task.closed ? 'on' : ''}`} type="button" onClick={() => task.closed ? actions.restoreTask(task.id) : actions.closeTask(task.id)} />{task.closed ? '已关闭' : '未关闭'}</span></div>
@@ -1500,8 +1612,31 @@ function RightPanel({ state, actions, task }: { state: ReadyState; actions: AppA
           <div className="property"><span className="property-label">紧急</span><span className="property-value"><button className={`switch ${task.urgent ? 'on' : ''}`} type="button" onClick={() => actions.toggleUrgent(task.id)} />{task.urgent ? '紧急' : '不紧急'}</span></div>
           <label className="property tag-property"><span className="property-label">标签</span><span className="property-value tag-picker">{state.data.tags.map(tag => <button key={tag.id} className={`tag-choice ${task.tags.includes(tag.id) ? 'active' : ''}`} type="button" onClick={() => actions.toggleTaskTag(task.id, tag.id)}>#{tag.name}</button>)}</span></label>
         </div>
-        <section className="panel"><div className="panel-title">描述</div><textarea className="textarea" value={task.description || ''} onChange={event => actions.updateTask(task.id, { description: event.target.value }, { silent: true })} /></section>
-        <ChecklistPanel task={task} actions={actions} />
+        <section className="panel"><div className="panel-title">描述</div><textarea className="textarea" value={descriptionDraft} onChange={event => setDescriptionDraft(event.target.value)} onBlur={() => void saveDescription()} /></section>
+        <section className="panel checklist-panel">
+          <div className="panel-title"><span>Checklist</span><span className="chip">{task.subtasks.filter(item => item.completed).length}/{task.subtasks.length}</span></div>
+          <SubtaskComposer task={task} actions={actions} />
+          <div className="subtask-list">
+            {task.subtasks.map(subtask => {
+              const draftKey = subtaskDraftKey(subtask);
+              return (
+                <div className={`subtask ${subtask.completed ? 'done' : ''}`} key={subtask.id || subtask.order}>
+                  <input type="checkbox" checked={subtask.completed} onChange={() => actions.updateSubtasks(task.id, task.subtasks.map(item => item === subtask ? { ...item, completed: !item.completed } : item))} />
+                  <div className="subtask-body">
+                    <textarea
+                      className="subtask-title"
+                      value={subtaskDrafts[draftKey] ?? subtask.title}
+                      onChange={event => setSubtaskDrafts(current => ({ ...current, [draftKey]: event.target.value }))}
+                      onBlur={() => void saveSubtaskTitle(subtask)}
+                    />
+                    <div className="subtask-meta-row"><span className="mini-tag">{subtask.dueDate ? shortDate(subtask.dueDate) : '无日期'}</span><span className="mini-tag">{priorityLabel(subtask.priority)}</span></div>
+                  </div>
+                  <button className="tiny-action" type="button" onClick={() => actions.updateSubtasks(task.id, task.subtasks.filter(item => item !== subtask))}>删除</button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
         <AttachmentsPanel task={task} actions={actions} settings={state.data.settings} />
       </div>
     </aside>
@@ -1512,26 +1647,34 @@ function priorityOptions() {
   return (['none', 'low', 'medium', 'high'] as Priority[]).map(item => <option key={item} value={item}>{priorityLabel(item)}</option>);
 }
 
-function ChecklistPanel({ task, actions }: { task: Task; actions: AppActions }) {
-  const done = task.subtasks.filter(item => item.completed).length;
+function SubtaskComposer({ task, actions }: { task: Task; actions: AppActions }) {
+  const imeGuard = useImeSubmitGuard();
+
   return (
-    <section className="panel checklist-panel">
-      <div className="panel-title"><span>Checklist</span><span className="chip">{done}/{task.subtasks.length}</span></div>
-      <form className="subtask-composer" onSubmit={async event => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const batch = appendSubtasks(task.subtasks, String(form.get('title') || ''));
-        if (!batch.createdCount) return;
-        await actions.updateSubtasks(task.id, batch.subtasks);
-        event.currentTarget.reset();
-      }}>
-        <textarea className="input subtask-input" name="title" rows={2} placeholder="添加检查项，支持粘贴多行内容" />
-        <button className="tiny-action" type="submit">添加</button>
-      </form>
-      <div className="subtask-list">
-        {task.subtasks.map(subtask => <div className={`subtask ${subtask.completed ? 'done' : ''}`} key={subtask.id || subtask.order}><input type="checkbox" checked={subtask.completed} onChange={() => actions.updateSubtasks(task.id, task.subtasks.map(item => item === subtask ? { ...item, completed: !item.completed } : item))} /><div className="subtask-body"><textarea className="subtask-title" value={subtask.title} onChange={event => actions.updateSubtasks(task.id, task.subtasks.map(item => item === subtask ? { ...item, title: event.target.value } : item))} /><div className="subtask-meta-row"><span className="mini-tag">{subtask.dueDate ? shortDate(subtask.dueDate) : '无日期'}</span><span className="mini-tag">{priorityLabel(subtask.priority)}</span></div></div><button className="tiny-action" type="button" onClick={() => actions.updateSubtasks(task.id, task.subtasks.filter(item => item !== subtask))}>删除</button></div>)}
-      </div>
-    </section>
+    <form className="subtask-composer" onSubmit={async event => {
+      event.preventDefault();
+      if (imeGuard.shouldBlockSubmit()) {
+        imeGuard.reset();
+        return;
+      }
+      const form = new FormData(event.currentTarget);
+      const batch = appendSubtasks(task.subtasks, String(form.get('title') || ''));
+      if (!batch.createdCount) return;
+      await actions.updateSubtasks(task.id, batch.subtasks);
+      imeGuard.reset();
+      event.currentTarget.reset();
+    }}>
+      <textarea
+        className="input subtask-input"
+        name="title"
+        rows={2}
+        placeholder="添加检查项，支持粘贴多行内容"
+        onCompositionStart={() => imeGuard.onCompositionStart()}
+        onCompositionEnd={() => imeGuard.onCompositionEnd()}
+        onKeyDown={event => imeGuard.onKeyDown(event)}
+      />
+      <button className="tiny-action" type="submit">添加</button>
+    </form>
   );
 }
 
@@ -1551,13 +1694,21 @@ function AttachmentsPanel({ task, actions, settings }: { task: Task; actions: Ap
 
 function CreateTaskPanel({ state, actions }: { state: ReadyState; actions: AppActions }) {
   const defaults = resolvedCreateDefaults(state);
+  const imeGuard = useImeSubmitGuard();
   return (
     <aside className="right-panel drawer open create-panel">
       <div className="drawer-toolbar"><button className="icon-btn" type="button" onClick={() => actions.closePanel()}>×</button><span className="save-state">新建任务</span><button className="icon-btn" type="button" onClick={() => actions.updateSettings({ dockDrawer: !state.data.settings.dockDrawer })}>⌖</button></div>
       <div className="drawer-content">
         <div className="panel-intro"><h2>新建任务</h2><p>使用当前视图上下文创建任务，连续新建会保留日期、项目和标签。</p></div>
-        <form className="dialog-body panel-form" onSubmit={event => submitCreate(event, actions)}>
-          <label className="field"><span>任务标题</span><input className="input" name="title" required autoFocus placeholder="例如：整理今天的任务" defaultValue={defaults.title} /></label>
+        <form className="dialog-body panel-form" onSubmit={event => {
+          if (imeGuard.shouldBlockSubmit()) {
+            event.preventDefault();
+            imeGuard.reset();
+            return;
+          }
+          return submitCreate(event, actions);
+        }}>
+          <label className="field"><span>任务标题</span><input className="input" name="title" required autoFocus placeholder="例如：整理今天的任务" defaultValue={defaults.title} onCompositionStart={() => imeGuard.onCompositionStart()} onCompositionEnd={() => imeGuard.onCompositionEnd()} onKeyDown={event => imeGuard.onKeyDown(event)} /></label>
           <label className="field"><span>项目</span><select className="select" name="projectId" defaultValue={defaults.projectId}><option value="">收件箱</option>{activeProjects(state.data).map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
           <label className="field"><span>截止日期</span><input className="input" name="dueDate" type="date" defaultValue={defaults.dueDate} /></label>
           <label className="field"><span>开始日期</span><input className="input" name="startDate" type="date" defaultValue={defaults.startDate} /></label>
