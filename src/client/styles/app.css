@@ -177,6 +177,17 @@ h1, h2, h3, p { margin: 0; }
   width: 100%;
   padding: 28px clamp(18px, 3vw, 42px) 96px;
 }
+.main-pane.calendar-pane {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  padding-bottom: 28px;
+}
+.calendar-pane .calendar-shell {
+  height: 100%;
+  min-height: 0;
+}
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -450,7 +461,8 @@ h1, h2, h3, p { margin: 0; }
 .calendar-month-scroll {
   display: grid;
   gap: 22px;
-  max-height: min(72vh, 920px);
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
@@ -461,14 +473,33 @@ h1, h2, h3, p { margin: 0; }
   pointer-events: none;
 }
 .calendar-month-section {
+  position: relative;
   display: grid;
   gap: 10px;
   min-width: 0;
 }
+.calendar-month-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.calendar-month-weekdays-scroll,
+.calendar-month-grid-scroll {
+  min-width: 0;
+}
+.calendar-month-weekdays-scroll {
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.calendar-month-weekdays-scroll::-webkit-scrollbar { display: none; }
 .calendar-month-grid-scroll {
   display: grid;
   gap: 8px;
-  min-width: 0;
 }
 .calendar-month-title {
   display: flex;
@@ -521,6 +552,10 @@ h1, h2, h3, p { margin: 0; }
 }
 .calendar-day.today, .day-column.today { border-color: color-mix(in oklch, var(--accent) 40%, var(--border)); }
 .calendar-day.selected, .day-column.selected { box-shadow: inset 0 0 0 2px var(--accent-soft); }
+.calendar-day-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
 .calendar-day.drag-over, .day-column.drag-over {
   border-color: color-mix(in oklch, var(--accent) 62%, var(--border));
   background: color-mix(in oklch, var(--accent) 9%, var(--surface));
@@ -869,15 +904,19 @@ h1, h2, h3, p { margin: 0; }
     border-left: 0;
   }
   .matrix-grid, .reports-grid { grid-template-columns: 1fr; }
+  .main-pane.calendar-pane {
+    height: 100dvh;
+    padding-bottom: 96px;
+  }
   .calendar-month-scroll {
-    max-height: min(58vh, 620px);
     padding-right: 0;
   }
+  .calendar-month-weekdays-scroll,
   .calendar-month-grid-scroll {
     overflow-x: auto;
     padding-bottom: 2px;
   }
-  .calendar-month-grid-scroll .month-weekdays,
+  .calendar-month-weekdays-scroll .month-weekdays,
   .calendar-month-grid-scroll .month-grid {
     min-width: 980px;
   }
@@ -888,7 +927,7 @@ h1, h2, h3, p { margin: 0; }
   .page-title { font-size: 34px; }
   .header-actions { justify-content: flex-start; }
   .property { grid-template-columns: 1fr; }
-  .calendar-month-grid-scroll .month-weekdays,
+  .calendar-month-weekdays-scroll .month-weekdays,
   .calendar-month-grid-scroll .month-grid {
     min-width: 944px;
   }
