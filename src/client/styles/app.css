@@ -906,7 +906,7 @@ h1, h2, h3, p { margin: 0; }
   .matrix-grid, .reports-grid { grid-template-columns: 1fr; }
   .main-pane.calendar-pane {
     height: 100dvh;
-    padding-bottom: 96px;
+    padding-bottom: 112px;
   }
   .calendar-month-scroll {
     padding-right: 0;
