@@ -1,4 +1,4 @@
-import type { DragEvent, FormEvent, ReactNode } from 'react';
+import type { DragEvent, FormEvent, ReactNode, UIEvent as ReactUIEvent } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   type AttachmentResponse,
@@ -53,6 +53,7 @@ import {
 import {
   buildCalendarMonthWindow,
   buildTaskRangeSegments,
+  calendarMonthWeekWindows,
   calendarTaskDropPatch,
   extendCalendarMonthWindow,
   dateInputDisplayValue,
@@ -67,6 +68,7 @@ import {
   todayISO,
   weekdayName,
   getTaskDateStatus,
+  type MonthDay,
   type TaskRangeSegment,
 } from './lib/dates.ts';
 import { buildReportSummary } from './lib/reports.ts';
@@ -595,7 +597,9 @@ function AppShell({ state, actions }: { state: ReadyState; actions: AppActions }
       </div>
       <main className={`app-shell ${hasPanel ? 'has-right-panel' : ''} ${state.data.settings.dockDrawer ? 'right-panel-docked' : ''} ${state.data.settings.sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Sidebar state={state} actions={actions} />
-        <section className="main-pane"><MainView state={state} actions={actions} /></section>
+        <section className={`main-pane ${state.route.name === 'calendar' ? 'calendar-pane' : ''}`}>
+          <MainView state={state} actions={actions} />
+        </section>
         {hasPanel ? <RightPanel state={state} actions={actions} task={selectedTask} /> : null}
       </main>
       <MobileBottom state={state} actions={actions} />
@@ -991,10 +995,10 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
   const selected = state.selectedCalendarDate || todayISO();
   const tasks = openTasks(state.data);
   const limit = calendarDayLimit(state.data);
+  const showAdjacentDays = state.data.settings.calendarShowAdjacentDays;
   const rangeTasks = tasks.filter(isTaskRange);
   const weekDayModels = weekDays.map(date => ({ date, inMonth: true }));
-  const weekDayDates = weekDayModels.map(day => day.date);
-  const weekRangeRows = calendarRangeRowCount(rangeTasks, weekDayDates, limit);
+  const weekRangeRows = calendarRangeRowCount(rangeTasks, weekDayModels, limit, true);
 
   useEffect(() => {
     if (!monthBoundaryLoadingEnabled) return;
@@ -1076,25 +1080,28 @@ function CalendarView({ state, actions }: { state: ReadyState; actions: AppActio
         {state.calendarMode === 'week' ? (
           <div className="week-grid calendar-range-grid" style={{ '--range-rows': weekRangeRows } as React.CSSProperties}>
             {weekDayModels.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
-            <CalendarRangeLayer actions={actions} days={weekDayDates} limit={limit} rangeTasks={rangeTasks} />
+            <CalendarRangeLayer actions={actions} days={weekDayModels} limit={limit} rangeTasks={rangeTasks} showAdjacentDays={true} />
           </div>
         ) : (
           <div className="calendar-month-scroll" ref={scrollRef}>
             <div className="calendar-scroll-sentinel" ref={topSentinelRef} aria-hidden="true" />
             {months.map(month => {
-              const dayDates = month.days.map(day => day.date);
-              const rangeRows = calendarRangeRowCount(rangeTasks, dayDates, limit);
+              const rangeRows = calendarRangeRowCount(rangeTasks, month.days, limit, showAdjacentDays);
               return (
                 <section className="calendar-month-section" data-month-key={month.key} key={month.key}>
-                  <div className="calendar-month-title">
-                    <h2>{month.label}</h2>
-                    <span>{month.days.filter(day => day.inMonth).length} 天</span>
+                  <div className="calendar-month-sticky">
+                    <div className="calendar-month-title">
+                      <h2>{month.label}</h2>
+                      <span>{month.days.filter(day => day.inMonth).length} 天</span>
+                    </div>
+                    <div className="calendar-month-weekdays-scroll" data-calendar-horizontal onScroll={syncCalendarHorizontalScroll}>
+                      <div className="month-weekdays">{monthWeekdayLabels().map(label => <span key={label}>{label}</span>)}</div>
+                    </div>
                   </div>
-                  <div className="calendar-month-grid-scroll">
-                    <div className="month-weekdays">{monthWeekdayLabels().map(label => <span key={label}>{label}</span>)}</div>
+                  <div className="calendar-month-grid-scroll" data-calendar-horizontal onScroll={syncCalendarHorizontalScroll}>
                     <div className="month-grid calendar-range-grid" style={{ '--range-rows': rangeRows } as React.CSSProperties}>
-                      {month.days.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} />)}
-                      <CalendarRangeLayer actions={actions} days={dayDates} limit={limit} rangeTasks={rangeTasks} />
+                      {month.days.map((day, index) => <CalendarCell key={day.date} state={state} actions={actions} day={day} index={index} showAdjacentDays={showAdjacentDays} />)}
+                      <CalendarRangeLayer actions={actions} days={month.days} limit={limit} rangeTasks={rangeTasks} showAdjacentDays={showAdjacentDays} />
                     </div>
                   </div>
                 </section>
@@ -1127,12 +1134,34 @@ function calendarMonthNearestTop(scroller: HTMLDivElement | null) {
   return nearest?.key || null;
 }
 
-function CalendarCell({ state, actions, day, index }: { state: ReadyState; actions: AppActions; day: { date: string; inMonth: boolean }; index: number }) {
+function syncCalendarHorizontalScroll(event: ReactUIEvent<HTMLDivElement>) {
+  const source = event.currentTarget;
+  const section = source.closest('.calendar-month-section');
+  if (!section) return;
+  for (const target of Array.from(section.querySelectorAll<HTMLElement>('[data-calendar-horizontal]'))) {
+    if (target !== source && target.scrollLeft !== source.scrollLeft) {
+      target.scrollLeft = source.scrollLeft;
+    }
+  }
+}
+
+function CalendarCell({ state, actions, day, index, showAdjacentDays = true }: {
+  state: ReadyState;
+  actions: AppActions;
+  day: MonthDay;
+  index: number;
+  showAdjacentDays?: boolean;
+}) {
+  const isMonth = state.calendarMode === 'month';
+  const style = isMonth ? { gridColumn: (index % 7) + 1, gridRow: Math.floor(index / 7) + 1 } : { gridColumn: index + 1, gridRow: 1 };
+
+  if (isMonth && !day.inMonth && !showAdjacentDays) {
+    return <article aria-hidden="true" className="calendar-day calendar-day-placeholder" style={style} />;
+  }
+
   const allDayTasks = openTasks(state.data).filter(task => taskCoversDate(task, day.date));
   const tasks = sortTasks(allDayTasks.filter(task => !isTaskRange(task)));
   const visible = tasks.slice(0, calendarDayLimit(state.data));
-  const isMonth = state.calendarMode === 'month';
-  const style = isMonth ? { gridColumn: (index % 7) + 1, gridRow: Math.floor(index / 7) + 1 } : { gridColumn: index + 1, gridRow: 1 };
   const onDrop = async (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     event.currentTarget.classList.remove('drag-over');
@@ -1189,19 +1218,26 @@ function CalendarCell({ state, actions, day, index }: { state: ReadyState; actio
   );
 }
 
-function CalendarRangeLayer({ actions, days, limit, rangeTasks }: { actions: AppActions; days: string[]; limit: number; rangeTasks: Task[] }) {
-  const weeks = [];
-  for (let index = 0; index < days.length; index += 7) weeks.push(days.slice(index, index + 7));
+function CalendarRangeLayer({ actions, days, limit, rangeTasks, showAdjacentDays }: {
+  actions: AppActions;
+  days: MonthDay[];
+  limit: number;
+  rangeTasks: Task[];
+  showAdjacentDays: boolean;
+}) {
+  const weeks = calendarMonthWeekWindows(days, showAdjacentDays);
   return (
     <>
       {weeks.map((week, rowIndex) => {
-        const segments = sortCalendarSegments(buildTaskRangeSegments(rangeTasks, week));
+        const dayDates = week.days.map(day => day.date);
+        if (!dayDates.length) return null;
+        const segments = sortCalendarSegments(buildTaskRangeSegments(rangeTasks, dayDates));
         const visible = segments.slice(0, limit);
         const hidden = Math.max(0, segments.length - visible.length);
         return (
-          <div className="calendar-range-layer" key={week[0] || rowIndex} style={{ '--week-row': rowIndex + 1, '--range-count': visible.length } as React.CSSProperties}>
-            {visible.map((segment, segmentIndex) => <CalendarRangeBar actions={actions} key={`${segment.task.id}-${segment.visibleStart}`} segment={segment} row={segmentIndex + 1} />)}
-            {hidden ? <button className="calendar-range-more tiny-action" type="button" style={{ '--range-row': visible.length + 1 } as React.CSSProperties} onClick={event => { event.stopPropagation(); actions.setSelectedCalendarDate(week[0]); }}>还有 {hidden} 项范围任务</button> : null}
+          <div className="calendar-range-layer" key={dayDates[0]} style={{ '--week-row': rowIndex + 1, '--range-count': visible.length } as React.CSSProperties}>
+            {visible.map((segment, segmentIndex) => <CalendarRangeBar actions={actions} columnOffset={week.columnOffset} key={`${segment.task.id}-${segment.visibleStart}`} segment={segment} row={segmentIndex + 1} />)}
+            {hidden ? <button className="calendar-range-more tiny-action" type="button" style={{ '--range-row': visible.length + 1 } as React.CSSProperties} onClick={event => { event.stopPropagation(); actions.setSelectedCalendarDate(dayDates[0]); }}>还有 {hidden} 项范围任务</button> : null}
           </div>
         );
       })}
@@ -1209,7 +1245,7 @@ function CalendarRangeLayer({ actions, days, limit, rangeTasks }: { actions: App
   );
 }
 
-function CalendarRangeBar({ actions, segment, row }: { actions: AppActions; segment: TaskRangeSegment<Task>; row: number }) {
+function CalendarRangeBar({ actions, columnOffset, segment, row }: { actions: AppActions; columnOffset: number; segment: TaskRangeSegment<Task>; row: number }) {
   const priority = priorityMeta(segment.task.priority).key;
   const className = [
     'calendar-range-bar',
@@ -1223,7 +1259,7 @@ function CalendarRangeBar({ actions, segment, row }: { actions: AppActions; segm
       draggable
       type="button"
       data-task-id={segment.task.id}
-      style={{ '--range-start': segment.startIndex + 1, '--range-span': segment.span, '--range-row': row } as React.CSSProperties}
+      style={{ '--range-start': segment.startIndex + columnOffset + 1, '--range-span': segment.span, '--range-row': row } as React.CSSProperties}
       onClick={event => { event.stopPropagation(); actions.openDetail(segment.task.id); }}
       onDragStart={event => writeCalendarDragPayload(event, segment.task.id, 'range')}
       onDragEnd={event => event.currentTarget.classList.remove('dragging')}
@@ -1259,11 +1295,11 @@ function readCalendarDragPayload(event: DragEvent<HTMLElement>) {
   }
 }
 
-function calendarRangeRowCount(rangeTasks: Task[], days: string[], limit: number) {
+function calendarRangeRowCount(rangeTasks: Task[], days: MonthDay[], limit: number, showAdjacentDays: boolean) {
   let max = 0;
-  for (let index = 0; index < days.length; index += 7) {
-    const week = days.slice(index, index + 7);
-    max = Math.max(max, Math.min(limit, buildTaskRangeSegments(rangeTasks, week).length));
+  for (const week of calendarMonthWeekWindows(days, showAdjacentDays)) {
+    const dayDates = week.days.map(day => day.date);
+    max = Math.max(max, Math.min(limit, buildTaskRangeSegments(rangeTasks, dayDates).length));
   }
   return max;
 }
@@ -1475,7 +1511,24 @@ function settingsCopy(id: ClientState['settingsPanel']) {
 function settingsPanel(state: ReadyState, actions: AppActions, attachments: { task: Task; attachment: Attachment }[]) {
   const panel = state.settingsPanel;
   if (panel === 'account') return <section className="group"><div className="group-header"><div className="group-title"><span className="dot" />账号与安全</div><span className="group-meta">{state.data.user.username}</span></div><PasswordForm actions={actions} /></section>;
-  if (panel === 'appearance') return <section className="group"><div className="group-header"><div className="group-title"><span className="dot success" />外观</div><span className="group-meta">即时生效</span></div><div className="panel"><div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button key={theme} className={state.data.settings.theme === theme ? 'active' : ''} type="button" onClick={() => actions.updateSettings({ theme })}>{themeLabel(theme)}</button>)}</div><label className="field"><span>日历每日显示条数</span><select className="select" value={state.data.settings.calendarDayLimit} onChange={event => actions.updateSettings({ calendarDayLimit: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6].map(value => <option key={value} value={value}>{value} 条</option>)}</select></label>{switchRow('紧凑任务行', '桌面任务行更紧凑，适合高任务量。', state.data.settings.compactRows, () => actions.updateSettings({ compactRows: !state.data.settings.compactRows }))}{switchRow('收起左侧边栏', '桌面端只保留图标导航。', state.data.settings.sidebarCollapsed, () => actions.updateSettings({ sidebarCollapsed: !state.data.settings.sidebarCollapsed }))}{switchRow('固定右侧详情抽屉', '宽屏时保持详情常驻。', state.data.settings.dockDrawer, () => actions.updateSettings({ dockDrawer: !state.data.settings.dockDrawer }))}</div></section>;
+  if (panel === 'appearance') return (
+    <section className="group">
+      <div className="group-header"><div className="group-title"><span className="dot success" />外观</div><span className="group-meta">即时生效</span></div>
+      <div className="panel">
+        <div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button key={theme} className={state.data.settings.theme === theme ? 'active' : ''} type="button" onClick={() => actions.updateSettings({ theme })}>{themeLabel(theme)}</button>)}</div>
+        <label className="field"><span>日历每日显示条数</span><select className="select" value={state.data.settings.calendarDayLimit} onChange={event => actions.updateSettings({ calendarDayLimit: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6].map(value => <option key={value} value={value}>{value} 条</option>)}</select></label>
+        {switchRow(
+          '显示相邻月份日期',
+          '开启后，月视图会在月初和月末显示相邻月份的日期与任务。',
+          state.data.settings.calendarShowAdjacentDays,
+          () => actions.updateSettings({ calendarShowAdjacentDays: !state.data.settings.calendarShowAdjacentDays })
+        )}
+        {switchRow('紧凑任务行', '桌面任务行更紧凑，适合高任务量。', state.data.settings.compactRows, () => actions.updateSettings({ compactRows: !state.data.settings.compactRows }))}
+        {switchRow('收起左侧边栏', '桌面端只保留图标导航。', state.data.settings.sidebarCollapsed, () => actions.updateSettings({ sidebarCollapsed: !state.data.settings.sidebarCollapsed }))}
+        {switchRow('固定右侧详情抽屉', '宽屏时保持详情常驻。', state.data.settings.dockDrawer, () => actions.updateSettings({ dockDrawer: !state.data.settings.dockDrawer }))}
+      </div>
+    </section>
+  );
   if (panel === 'notifications') return <section className="group"><div className="group-header"><div className="group-title"><span className="dot warn" />通知</div><span className="group-meta">{notificationState()}</span></div><div className="panel"><p className="page-subtitle">浏览器通知需要用户授权。已拒绝时需要到浏览器设置中手动恢复。</p><div className="header-actions"><button className="soft-button" type="button" onClick={() => actions.requestNotifications()}>开启通知</button><button className="quiet-button" type="button" onClick={() => actions.testNotification()}>发送测试通知</button></div><label className="field"><span>默认提醒时间</span><select className="select" value={state.data.settings.defaultReminderTime} onChange={event => actions.updateSettings({ defaultReminderTime: event.target.value })}>{['09:00', '12:00', '18:00', ''].map(value => <option key={value} value={value}>{value || '不自动设置'}</option>)}</select></label></div></section>;
   if (panel === 'data') return <section className="group"><div className="group-header"><div className="group-title"><span className="dot" />数据导入导出</div><span className="group-meta">任务、项目、标签、提醒、重复规则</span></div><div className="panel"><Stats items={[{ value: state.data.tasks.length, label: '任务' }, { value: state.data.projects.length, label: '项目' }, { value: state.data.tags.length, label: '标签' }, { value: state.data.filters.length, label: '过滤器' }]} /><a className="soft-button" href="/api/export/data">导出 JSON</a><input className="input" type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) actions.previewImport(file); }} />{state.importPreview ? <div className="panel"><div className="panel-title">预检结果</div><p className="page-subtitle">{state.importPreview.tasks} 任务 · {state.importPreview.projects} 项目 · 当前 {state.importPreview.currentTasks} 任务</p><button className="quiet-button danger-button" type="button" onClick={() => actions.confirmImport(null)}>确认导入</button></div> : null}</div></section>;
   if (panel === 'attachments') {
