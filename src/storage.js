@@ -130,6 +130,9 @@ function normalizeSettings(input = {}, existing = {}) {
     sidebarCollapsed: Boolean(input.sidebarCollapsed ?? existing.sidebarCollapsed ?? false),
     compactRows: Boolean(input.compactRows ?? existing.compactRows ?? false),
     pwaInstallDismissed: Boolean(input.pwaInstallDismissed ?? existing.pwaInstallDismissed ?? false),
+    calendarShowAdjacentDays: Boolean(
+      input.calendarShowAdjacentDays ?? existing.calendarShowAdjacentDays ?? false
+    ),
     calendarDayLimit: normalizeCalendarDayLimit(input.calendarDayLimit ?? existing.calendarDayLimit),
     uploadUrlConfig: normalizeUploadUrlConfig(input.uploadUrlConfig, existing.uploadUrlConfig)
   };
@@ -219,6 +222,7 @@ function seedData() {
       sidebarCollapsed: false,
       compactRows: false,
       pwaInstallDismissed: false,
+      calendarShowAdjacentDays: false,
       calendarDayLimit: DEFAULT_CALENDAR_DAY_LIMIT,
       uploadUrlConfig: { ...DEFAULT_UPLOAD_URL_CONFIG }
     },

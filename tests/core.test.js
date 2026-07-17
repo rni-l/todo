@@ -125,6 +125,21 @@ test('task urgent flag defaults false and can be updated', async () => {
   assert.equal(cleared.urgent, false);
 });
 
+test('calendar adjacent day setting defaults off and persists updates', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
+  const store = new TodoStore({ dataDir });
+  await store.init();
+
+  assert.equal(store.publicData().settings.calendarShowAdjacentDays, false);
+
+  const settings = await store.updateSettings({ calendarShowAdjacentDays: true });
+  assert.equal(settings.calendarShowAdjacentDays, true);
+
+  const reloaded = new TodoStore({ dataDir });
+  await reloaded.init();
+  assert.equal(reloaded.publicData().settings.calendarShowAdjacentDays, true);
+});
+
 test('attachments use configured access prefix, preserve utf8 names, and deduplicate files in dated directories', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-store-'));
   const store = new TodoStore({ dataDir });
@@ -224,6 +239,7 @@ test('legacy payloads backfill layout settings, upload url config, calendar day 
   await store.init();
   const filePath = path.join(dataDir, 'todo-data.json');
   const payload = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  delete payload.settings.calendarShowAdjacentDays;
   delete payload.settings.calendarDayLimit;
   delete payload.settings.sidebarCollapsed;
   delete payload.settings.dockDrawer;
@@ -239,6 +255,7 @@ test('legacy payloads backfill layout settings, upload url config, calendar day 
   const migrated = new TodoStore({ dataDir });
   await migrated.init();
 
+  assert.equal(migrated.data.settings.calendarShowAdjacentDays, false);
   assert.equal(migrated.data.settings.calendarDayLimit, 3);
   assert.equal(migrated.data.settings.sidebarCollapsed, false);
   assert.equal(migrated.data.settings.dockDrawer, true);

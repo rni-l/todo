@@ -34,6 +34,7 @@ export interface AppSettings {
   sidebarCollapsed: boolean;
   compactRows: boolean;
   pwaInstallDismissed: boolean;
+  calendarShowAdjacentDays: boolean;
   calendarDayLimit: number;
   uploadUrlConfig: UploadUrlConfig;
 }
