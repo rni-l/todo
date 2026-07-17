@@ -22,6 +22,11 @@ export interface CalendarMonth {
   days: MonthDay[];
 }
 
+export interface CalendarWeekWindow {
+  days: MonthDay[];
+  columnOffset: number;
+}
+
 export interface TaskRangeSegment<T extends Partial<Task> = Task> {
   task: T;
   startDate: string;
@@ -233,6 +238,23 @@ export function monthGridDays(reference: Date | string = new Date()): MonthDay[]
     });
   }
   return days.slice(0, totalCells);
+}
+
+export function calendarMonthWeekWindows(days: MonthDay[], showAdjacentDays: boolean): CalendarWeekWindow[] {
+  const weeks: CalendarWeekWindow[] = [];
+  for (let index = 0; index < days.length; index += 7) {
+    const week = days.slice(index, index + 7);
+    if (showAdjacentDays) {
+      weeks.push({ days: week, columnOffset: 0 });
+      continue;
+    }
+    const firstVisibleIndex = week.findIndex(day => day.inMonth);
+    weeks.push({
+      days: week.filter(day => day.inMonth),
+      columnOffset: Math.max(0, firstVisibleIndex)
+    });
+  }
+  return weeks;
 }
 
 export function buildCalendarMonth(key: string): CalendarMonth {

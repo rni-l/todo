@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildCalendarMonthWindow,
   buildTaskRangeSegments,
+  calendarMonthWeekWindows,
   calendarTaskDropPatch,
   extendCalendarMonthWindow,
   getRecentWindowDays,
@@ -127,6 +128,51 @@ test('monthGridDays accepts an explicit month reference', () => {
   assert.equal(days[34].date, '2026-03-01');
   assert.equal(days.find(day => day.date === '2026-02-14')?.inMonth, true);
   assert.equal(days.find(day => day.date === '2026-01-31')?.inMonth, false);
+});
+
+test('calendarMonthWeekWindows hides adjacent dates and preserves grid columns', () => {
+  const days = monthGridDays('2026-02');
+  const weeks = calendarMonthWeekWindows(days, false);
+
+  assert.equal(weeks.length, 5);
+  assert.deepEqual(weeks[0], {
+    days: [{ date: '2026-02-01', inMonth: true }],
+    columnOffset: 6
+  });
+  assert.deepEqual(weeks[4], {
+    days: [
+      { date: '2026-02-23', inMonth: true },
+      { date: '2026-02-24', inMonth: true },
+      { date: '2026-02-25', inMonth: true },
+      { date: '2026-02-26', inMonth: true },
+      { date: '2026-02-27', inMonth: true },
+      { date: '2026-02-28', inMonth: true }
+    ],
+    columnOffset: 0
+  });
+});
+
+test('calendarMonthWeekWindows keeps complete weeks when adjacent dates are enabled', () => {
+  const weeks = calendarMonthWeekWindows(monthGridDays('2026-02'), true);
+
+  assert.equal(weeks.length, 5);
+  assert.equal(weeks.every(week => week.days.length === 7), true);
+  assert.equal(weeks.every(week => week.columnOffset === 0), true);
+  assert.equal(weeks[0].days[0].date, '2026-01-26');
+  assert.equal(weeks[4].days[6].date, '2026-03-01');
+});
+
+test('hidden adjacent days clip a cross-month range to active-month columns', () => {
+  const firstWeek = calendarMonthWeekWindows(monthGridDays('2026-02'), false)[0];
+  const [segment] = buildTaskRangeSegments([
+    { id: 'cross-month', title: '跨月任务', startDate: '2026-01-30', dueDate: '2026-02-03' }
+  ], firstWeek.days.map(day => day.date));
+
+  assert.equal(firstWeek.columnOffset, 6);
+  assert.equal(segment.startIndex + firstWeek.columnOffset, 6);
+  assert.equal(segment.span, 1);
+  assert.equal(segment.continuesBefore, true);
+  assert.equal(segment.continuesAfter, true);
 });
 
 test('calendar month windows extend without duplicates and preserve order', () => {
