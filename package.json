@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node server.js",
     "dev:client": "vite --host 127.0.0.1",
+    "mcp:dev": "node src/mcp/server.js",
+    "mcp:start": "node src/mcp/server.js",
     "start": "node server.js",
     "build:client": "vite build",
     "release:build": "npm run build:client && node scripts/package-release.mjs",
@@ -13,6 +15,9 @@
     "pm2:restart": "pm2 startOrReload ecosystem.config.cjs --only personal-todo --update-env",
     "pm2:stop": "pm2 stop personal-todo",
     "pm2:logs": "pm2 logs personal-todo",
+    "pm2:mcp:start": "pm2 start ecosystem.config.cjs --only personal-todo-mcp",
+    "pm2:mcp:restart": "pm2 startOrReload ecosystem.config.cjs --only personal-todo-mcp --update-env",
+    "pm2:mcp:logs": "pm2 logs personal-todo-mcp",
     "test": "node --experimental-strip-types --test tests/*.test.js tests/*.test.ts"
   },
   "engines": {
@@ -26,5 +31,9 @@
     "react-dom": "19.2.7",
     "typescript": "6.0.3",
     "vite": "8.0.16"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
   }
 }

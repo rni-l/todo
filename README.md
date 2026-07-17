@@ -110,6 +110,11 @@ Environment variables:
 | `TODO_DATA_DIR` | `./data` | Runtime JSON data and upload directory |
 | `TODO_LOG_DIR` | `.deploy/shared/logs` | PM2 log directory |
 | `TODO_COOKIE_SECURE` | unset | Set to `1` when serving over HTTPS |
+| `TODO_MCP_TOKEN` | unset | Bearer token required by the optional MCP HTTP service |
+| `TODO_MCP_HOST` | `127.0.0.1` | MCP HTTP bind host |
+| `TODO_MCP_PORT` | `38888` | MCP HTTP port |
+| `TODO_MCP_ALLOWED_ORIGINS` | unset | Comma-separated browser Origin allowlist for MCP requests |
+| `TODO_MCP_LOG` | auto | Set `1` to force MCP request/tool logs, `0` to disable |
 
 Important behavior:
 
@@ -122,6 +127,46 @@ Example:
 ```bash
 TODO_DATA_DIR=./data-dev npm run dev
 ```
+
+## MCP HTTP Service
+
+The app can run a separate MCP Streamable HTTP service for other AI agents. It uses the same `TODO_DATA_DIR` as the web app and exposes a narrow task-focused tool surface:
+
+- `todo_list_tasks`
+- `todo_get_task`
+- `todo_create_task`
+- `todo_update_task`
+- `todo_complete_task`
+- `todo_close_task`
+
+Start it locally:
+
+```bash
+printf 'TODO_MCP_TOKEN=%s\n' 'replace-with-a-long-random-token' >> .env
+```
+
+```bash
+npm run mcp:dev
+```
+
+Endpoint:
+
+```text
+POST http://127.0.0.1:38888/mcp
+Authorization: Bearer <TODO_MCP_TOKEN>
+```
+
+Health check:
+
+```text
+GET http://127.0.0.1:38888/health
+```
+
+The default host is `127.0.0.1` so the MCP service is local-only. If you expose it to another machine, bind `TODO_MCP_HOST` deliberately, put it behind HTTPS, set a strong `TODO_MCP_TOKEN`, and configure `TODO_MCP_ALLOWED_ORIGINS` for browser-based clients. The MCP service does not expose account settings, password changes, import/export, attachment downloads, project/tag management, or hard-delete tools.
+
+`npm run mcp:dev` enables MCP request and tool-call logs by default. Set `TODO_MCP_LOG=0` in `.env` to silence them, or `TODO_MCP_LOG=1` to force the same logs in another startup mode.
+
+Full agent integration guide: [docs/mcp-http-service.md](docs/mcp-http-service.md).
 
 ## Runtime Data
 
@@ -163,11 +208,24 @@ npm run pm2:start
 npm run pm2:logs
 ```
 
+Start the MCP service under PM2:
+
+```bash
+npm run pm2:mcp:start
+npm run pm2:mcp:logs
+```
+
 Update an existing deployment:
 
 ```bash
 npm run release:build
 npm run pm2:restart
+```
+
+Restart an existing MCP deployment after changing MCP environment variables:
+
+```bash
+npm run pm2:mcp:restart
 ```
 
 Stop the process:

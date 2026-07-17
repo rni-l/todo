@@ -1,3 +1,4 @@
+import './src/load-env.cjs';
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSessionSecret, createSessionToken, validateNewPassword, verifySessionToken } from './src/auth.js';
 import { firstField, firstFile, parseMultipart } from './src/multipart.js';
-import { TodoStore } from './src/storage.js';
+import { TodoStoreRuntime } from './src/storeRuntime.js';
 import { createZip, parseZip } from './src/zip.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,8 +19,9 @@ const maxJsonBytes = 12 * 1024 * 1024;
 const maxUploadBytes = 110 * 1024 * 1024;
 const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
 
-const store = new TodoStore();
-await store.init();
+const runtime = new TodoStoreRuntime();
+await runtime.init();
+const store = runtime.store;
 
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -250,6 +252,7 @@ async function sendDownload(res, filePath, filename, type = 'application/octet-s
 }
 
 async function servePublicUpload(req, res, url) {
+  await runtime.reload();
   const accessPrefix = store.data.settings.uploadUrlConfig.accessPrefix;
   if (url.pathname !== accessPrefix && !url.pathname.startsWith(`${accessPrefix}/`)) return false;
   if (req.method !== 'GET') {
@@ -271,6 +274,7 @@ async function servePublicUpload(req, res, url) {
 
 async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/health') {
+    await runtime.reload();
     json(res, 200, {
       ok: true,
       appVersion: APP_VERSION,
@@ -278,6 +282,8 @@ async function api(req, res, url) {
     });
     return;
   }
+
+  await runtime.reload();
 
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     const body = await readJson(req);
@@ -307,11 +313,13 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/data') {
+    await runtime.reload();
     json(res, 200, store.publicData());
     return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/export/data') {
+    await runtime.reload();
     const body = JSON.stringify(store.exportData(), null, 2);
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -325,19 +333,21 @@ async function api(req, res, url) {
 
   if (req.method === 'POST' && url.pathname === '/api/import/preview') {
     const payload = await importPayload(req);
+    await runtime.reload();
     json(res, 200, { preview: store.previewImport(payload) });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/import/data') {
     const payload = await importPayload(req);
-    await store.importData(payload);
+    await runtime.write(store => store.importData(payload));
     json(res, 200, { ok: true, data: store.publicData() });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/settings') {
-    const settings = await store.updateSettings(await readJson(req));
+    const body = await readJson(req);
+    const settings = await runtime.write(store => store.updateSettings(body));
     json(res, 200, { settings });
     return;
   }
@@ -355,21 +365,23 @@ async function api(req, res, url) {
       json(res, 400, { error: passwordError });
       return;
     }
-    await store.changePassword(body.newPassword);
+    await runtime.write(store => store.changePassword(body.newPassword));
     setSessionCookie(res, createSession(session.value.username));
     json(res, 200, { ok: true });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/tasks') {
-    const task = await store.createTask(await readJson(req));
+    const body = await readJson(req);
+    const task = await runtime.write(store => store.createTask(body));
     json(res, 201, { task, data: store.publicData() });
     return;
   }
 
   let params = routeParams('/api/tasks/:id', url.pathname);
   if (params && req.method === 'PATCH') {
-    const task = await store.updateTask(params.id, await readJson(req));
+    const body = await readJson(req);
+    const task = await runtime.write(store => store.updateTask(params.id, body));
     if (!task) {
       json(res, 404, { error: 'task_not_found' });
       return;
@@ -378,20 +390,22 @@ async function api(req, res, url) {
     return;
   }
   if (params && req.method === 'DELETE') {
-    const ok = await store.deleteTask(params.id);
+    const ok = await runtime.write(store => store.deleteTask(params.id));
     json(res, ok ? 200 : 404, ok ? { ok: true, data: store.publicData() } : { error: 'task_not_found' });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/projects') {
-    const project = await store.createProject(await readJson(req));
+    const body = await readJson(req);
+    const project = await runtime.write(store => store.createProject(body));
     json(res, 201, { project, data: store.publicData() });
     return;
   }
 
   params = routeParams('/api/projects/:id', url.pathname);
   if (params && req.method === 'PATCH') {
-    const project = await store.updateProject(params.id, await readJson(req));
+    const body = await readJson(req);
+    const project = await runtime.write(store => store.updateProject(params.id, body));
     if (!project) {
       json(res, 404, { error: 'project_not_found' });
       return;
@@ -401,20 +415,22 @@ async function api(req, res, url) {
   }
   if (params && req.method === 'DELETE') {
     const body = url.searchParams.get('mode') ? { mode: url.searchParams.get('mode') } : await optionalJson(req);
-    const ok = await store.deleteProject(params.id, body);
+    const ok = await runtime.write(store => store.deleteProject(params.id, body));
     json(res, ok ? 200 : 404, ok ? { ok: true, data: store.publicData() } : { error: 'project_not_found' });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/tags') {
-    const tag = await store.createTag(await readJson(req));
+    const body = await readJson(req);
+    const tag = await runtime.write(store => store.createTag(body));
     json(res, 201, { tag, data: store.publicData() });
     return;
   }
 
   params = routeParams('/api/tags/:id', url.pathname);
   if (params && req.method === 'PATCH') {
-    const tag = await store.updateTag(params.id, await readJson(req));
+    const body = await readJson(req);
+    const tag = await runtime.write(store => store.updateTag(params.id, body));
     if (!tag) {
       json(res, 404, { error: 'tag_not_found' });
       return;
@@ -423,20 +439,22 @@ async function api(req, res, url) {
     return;
   }
   if (params && req.method === 'DELETE') {
-    const ok = await store.deleteTag(params.id);
+    const ok = await runtime.write(store => store.deleteTag(params.id));
     json(res, ok ? 200 : 404, ok ? { ok: true, data: store.publicData() } : { error: 'tag_not_found' });
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/filters') {
-    const filter = await store.createFilter(await readJson(req));
+    const body = await readJson(req);
+    const filter = await runtime.write(store => store.createFilter(body));
     json(res, 201, { filter, data: store.publicData() });
     return;
   }
 
   params = routeParams('/api/filters/:id', url.pathname);
   if (params && req.method === 'PATCH') {
-    const filter = await store.updateFilter(params.id, await readJson(req));
+    const body = await readJson(req);
+    const filter = await runtime.write(store => store.updateFilter(params.id, body));
     if (!filter) {
       json(res, 404, { error: 'filter_not_found' });
       return;
@@ -445,7 +463,7 @@ async function api(req, res, url) {
     return;
   }
   if (params && req.method === 'DELETE') {
-    const ok = await store.deleteFilter(params.id);
+    const ok = await runtime.write(store => store.deleteFilter(params.id));
     json(res, ok ? 200 : 404, ok ? { ok: true, data: store.publicData() } : { error: 'filter_not_found' });
     return;
   }
@@ -462,7 +480,7 @@ async function api(req, res, url) {
       json(res, 413, { error: 'file_too_large' });
       return;
     }
-    const attachment = await store.addAttachment(params.id, file);
+    const attachment = await runtime.write(store => store.addAttachment(params.id, file));
     if (!attachment) {
       json(res, 404, { error: 'task_not_found' });
       return;
@@ -483,7 +501,11 @@ async function api(req, res, url) {
       await sendDownload(res, filePath, found.attachment.originalName, found.attachment.mimeType);
     } catch {
       found.attachment.missing = true;
-      await store.save();
+      await runtime.write(async store => {
+        const latest = store.findAttachment(params.id);
+        if (latest) latest.attachment.missing = true;
+        await store.save();
+      });
       json(res, 404, { error: 'attachment_file_missing' });
     }
     return;
@@ -491,25 +513,33 @@ async function api(req, res, url) {
 
   params = routeParams('/api/attachments/:id', url.pathname);
   if (params && req.method === 'DELETE') {
-    const ok = await store.deleteAttachment(params.id);
+    const ok = await runtime.write(store => store.deleteAttachment(params.id));
     json(res, ok ? 200 : 404, ok ? { ok: true, data: store.publicData() } : { error: 'attachment_not_found' });
     return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/export/attachments') {
     const files = [];
+    const attachmentStates = [];
+    await runtime.reload();
     for (const task of store.data.tasks) {
       for (const attachment of task.attachments) {
         try {
           const filePath = await store.attachmentPath(attachment);
           files.push({ path: filePath, name: attachment.storageName });
-          attachment.missing = false;
+          attachmentStates.push({ id: attachment.id, missing: false });
         } catch {
-          attachment.missing = true;
+          attachmentStates.push({ id: attachment.id, missing: true });
         }
       }
     }
-    await store.save();
+    await runtime.write(async store => {
+      for (const state of attachmentStates) {
+        const found = store.findAttachment(state.id);
+        if (found) found.attachment.missing = state.missing;
+      }
+      await store.save();
+    });
     const zip = await createZip(files);
     res.writeHead(200, {
       'Content-Type': 'application/zip',
@@ -528,7 +558,7 @@ async function api(req, res, url) {
       json(res, 400, { error: 'missing_zip' });
       return;
     }
-    const summary = await store.importAttachmentEntries(parseZip(file.content));
+    const summary = await runtime.write(store => store.importAttachmentEntries(parseZip(file.content)));
     json(res, 200, { ok: true, summary, data: store.publicData() });
     return;
   }
