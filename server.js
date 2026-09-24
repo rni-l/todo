@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createSessionSecret, createSessionToken, validateNewPassword, verifySessionToken } from './src/auth.js';
 import { firstField, firstFile, parseMultipart } from './src/multipart.js';
 import { TodoStoreRuntime } from './src/storeRuntime.js';
+import { MacQuickAccess } from './src/macQuick.js';
 import { createZip, parseZip } from './src/zip.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +16,7 @@ const APP_VERSION = packageJson.version || '0.0.0';
 const publicDir = path.join(__dirname, 'public');
 const prototypeDir = __dirname;
 const port = Number(process.env.PORT || 38887);
+const host = process.env.TODO_MAC_WIDGET_TOKEN ? '127.0.0.1' : process.env.TODO_HOST || undefined;
 const maxJsonBytes = 12 * 1024 * 1024;
 const maxUploadBytes = 110 * 1024 * 1024;
 const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
@@ -22,6 +24,13 @@ const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
 const runtime = new TodoStoreRuntime();
 await runtime.init();
 const store = runtime.store;
+const macQuick = process.env.TODO_MAC_WIDGET_TOKEN
+  ? new MacQuickAccess({
+    runtime,
+    token: process.env.TODO_MAC_WIDGET_TOKEN,
+    stateDir: process.env.TODO_MAC_STATE_DIR || path.join(store.dataDir, '.mac-state')
+  })
+  : null;
 
 const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -285,6 +294,37 @@ async function api(req, res, url) {
 
   await runtime.reload();
 
+  if (url.pathname.startsWith('/api/mac/quick')) {
+    if (!macQuick) {
+      json(res, 404, { error: 'not_found' });
+      return;
+    }
+    if (req.headers.origin) {
+      json(res, 403, { error: 'origin_not_allowed' });
+      return;
+    }
+    if (!await macQuick.authorized(req.headers.authorization || '')) {
+      json(res, 401, { error: 'unauthorized' });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/mac/quick') {
+      json(res, 200, await macQuick.summary());
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/mac/quick/tasks') {
+      const body = await readJson(req);
+      json(res, 201, await macQuick.createToday(body.title));
+      return;
+    }
+    const complete = routeParams('/api/mac/quick/tasks/:id/complete', url.pathname);
+    if (req.method === 'POST' && complete) {
+      json(res, 200, await macQuick.complete(complete.id));
+      return;
+    }
+    json(res, 404, { error: 'not_found' });
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     const body = await readJson(req);
     const username = String(body.username || store.data.auth.username);
@@ -293,6 +333,7 @@ async function api(req, res, url) {
       return;
     }
     const sessionId = createSession(username);
+    if (macQuick) await macQuick.grant();
     setSessionCookie(res, sessionId);
     json(res, 200, { ok: true, user: { username } });
     return;
@@ -302,6 +343,7 @@ async function api(req, res, url) {
   if (!session) return;
 
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    if (macQuick) await macQuick.revoke();
     clearSessionCookie(res);
     json(res, 200, { ok: true });
     return;
@@ -366,6 +408,7 @@ async function api(req, res, url) {
       return;
     }
     await runtime.write(store => store.changePassword(body.newPassword));
+    if (macQuick) await macQuick.revoke();
     setSessionCookie(res, createSession(session.value.username));
     json(res, 200, { ok: true });
     return;
@@ -624,8 +667,8 @@ server.on('error', error => {
   process.exit(1);
 });
 
-server.listen(port, () => {
-  console.log(`Personal TODO is running at http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`Personal TODO is running at http://${host || 'localhost'}:${port}`);
   console.log(`App version: ${APP_VERSION}`);
   console.log(`Runtime root: ${process.cwd()}`);
   console.log(`Data directory: ${store.dataDir}`);
@@ -634,3 +677,15 @@ server.listen(port, () => {
     console.log('Default login password: todo123456');
   }
 });
+
+if (process.env.TODO_MAC_PARENT_PID) {
+  const parentPid = Number(process.env.TODO_MAC_PARENT_PID);
+  setInterval(() => {
+    try {
+      process.kill(parentPid, 0);
+    } catch {
+      server.close();
+      process.exit(0);
+    }
+  }, 2_000).unref();
+}

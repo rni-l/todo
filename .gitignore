@@ -5,6 +5,7 @@ data/*.json.tmp
 data/todo-data.json
 data/uploads/
 data/tmp/
+data/.mac-state/
 coverage/
 output/
 .deploy/
@@ -14,3 +15,6 @@ app/android/.kotlin/
 app/android/app/build/
 .od-skills
 public/dist
+app/macos/Generated/
+app/macos/build/
+app/macos/*.xcworkspace/xcuserdata/

@@ -14,6 +14,14 @@ export interface DataEnvelope {
   data: PublicData;
 }
 
+function notifyMacMutation(method?: string) {
+  if (!method || method.toUpperCase() === 'GET') return;
+  const bridge = (window as Window & {
+    webkit?: { messageHandlers?: { todoMac?: { postMessage(value: string): void } } }
+  }).webkit?.messageHandlers?.todoMac;
+  bridge?.postMessage('changed');
+}
+
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   let body: BodyInit | undefined;
@@ -39,6 +47,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     }
     throw new Error(String(detail.error || response.statusText || 'request_failed'));
   }
+  notifyMacMutation(options.method);
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return response.json() as Promise<T>;

@@ -10,6 +10,7 @@
     "mcp:start": "node src/mcp/server.js",
     "start": "node server.js",
     "build:client": "vite build",
+    "build:mac": "npm run build:client && node scripts/build-macos.mjs",
     "release:build": "npm run build:client && node scripts/package-release.mjs",
     "pm2:start": "pm2 start ecosystem.config.cjs --only personal-todo",
     "pm2:restart": "pm2 startOrReload ecosystem.config.cjs --only personal-todo --update-env",

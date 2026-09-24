@@ -77,6 +77,8 @@ You can also change the password later from Settings -> Account and Security.
 
 ## Frontend Development
 
+macOS 桌面版（主窗口、菜单栏和桌面小组件）的构建与使用说明见 [app/macos/README.md](app/macos/README.md)。
+
 The backend serves the built frontend from `public/dist`. For normal local usage, `npm run dev` is enough.
 
 When working on the React frontend with Vite, run the backend and Vite in separate terminals:
