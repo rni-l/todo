@@ -24,6 +24,37 @@ Authentication:
 Authorization: Bearer <TODO_MCP_TOKEN>
 ```
 
+## Protocol versions
+
+The endpoint is dual-era:
+
+- **Current MCP (`2026-07-28`)** is stateless. Send `server/discover` to retrieve this server's identity, supported protocol versions, and capability list; then use `tools/list` for the concrete tool list and `tools/call` to invoke one. Do not send `initialize`.
+- **Legacy MCP (`2025-11-25`)** remains available for clients based on the installed JavaScript SDK and uses its `initialize` handshake.
+
+For every current-MCP HTTP request, clients must send these headers in addition to the JSON-RPC body:
+
+| Header | Value |
+| --- | --- |
+| `Accept` | Must include `application/json` and `text/event-stream` |
+| `MCP-Protocol-Version` | `2026-07-28`; must match `_meta.io.modelcontextprotocol/protocolVersion` |
+| `Mcp-Method` | Exact JSON-RPC method (for example, `tools/list`) |
+| `Mcp-Name` | Required for `tools/call`; must match `params.name` |
+
+The current-MCP request body must include `_meta.io.modelcontextprotocol/protocolVersion`, `_meta.io.modelcontextprotocol/clientInfo`, and `_meta.io.modelcontextprotocol/clientCapabilities`. Header mismatches return HTTP `400` with MCP error code `-32020`; unknown methods return HTTP `404` with JSON-RPC code `-32601`.
+
+For example, a current-MCP discovery request is:
+
+```http
+POST /mcp HTTP/1.1
+Accept: application/json, text/event-stream
+Authorization: Bearer <TODO_MCP_TOKEN>
+MCP-Protocol-Version: 2026-07-28
+Mcp-Method: server/discover
+Content-Type: application/json
+
+{"jsonrpc":"2.0","id":"discover-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"todo-agent","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+```
+
 The service does not expose account settings, password changes, import/export, attachment downloads, project/tag management, or hard-delete operations.
 
 ## Start The Service
@@ -111,7 +142,9 @@ Generic shape:
 
 For remote agents, expose the service through HTTPS, bind `TODO_MCP_HOST` deliberately, and configure the client URL to the HTTPS reverse-proxy URL. Do not expose the raw HTTP endpoint directly on the public internet.
 
-## JavaScript Client Example
+## Legacy JavaScript SDK Example
+
+The currently installed SDK speaks the legacy `2025-11-25` handshake revision, so it follows the compatibility path above.
 
 ```js
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';

@@ -173,69 +173,96 @@ function withToolLog(name, logger, handler) {
   };
 }
 
-export function registerTodoTools(server, runtime, { logger } = {}) {
-  server.registerTool('todo_list_tasks', {
+export function createTodoTools(runtime, { logger } = {}) {
+  return [
+    {
+      name: 'todo_list_tasks',
+      config: {
     title: 'List TODO tasks',
     description: 'List personal TODO tasks with status, query, project, tag, and due-date filters.',
     inputSchema: listTasksSchema
-  }, withToolLog('todo_list_tasks', logger, async args => runtime.read(store => textResult({
-    ok: true,
-    tasks: filterTasks(store.publicData().tasks, args),
-    dataVersion: store.data.version,
-    updatedAt: store.data.updatedAt
-  }))));
+      },
+      handler: withToolLog('todo_list_tasks', logger, async args => runtime.read(store => textResult({
+        ok: true,
+        tasks: filterTasks(store.publicData().tasks, args),
+        dataVersion: store.data.version,
+        updatedAt: store.data.updatedAt
+      })))
+    },
+    {
+      name: 'todo_get_task',
+      config: {
+        title: 'Get TODO task',
+        description: 'Get one personal TODO task by id.',
+        inputSchema: taskIdSchema
+      },
+      handler: withToolLog('todo_get_task', logger, async ({ id }) => runtime.read(store => {
+        const task = store.publicData().tasks.find(item => item.id === id);
+        if (!task) throw notFoundError();
+        return textResult({
+          ok: true,
+          task,
+          dataVersion: store.data.version,
+          updatedAt: store.data.updatedAt
+        });
+      }))
+    },
+    {
+      name: 'todo_create_task',
+      config: {
+        title: 'Create TODO task',
+        description: 'Create a personal TODO task.',
+        inputSchema: createTaskSchema
+      },
+      handler: withToolLog('todo_create_task', logger, async args => runtime.write(async store => {
+        const task = await store.createTask(args);
+        return textResult(mutationEnvelope(store, task));
+      }))
+    },
+    {
+      name: 'todo_update_task',
+      config: {
+        title: 'Update TODO task',
+        description: 'Update editable fields on a personal TODO task.',
+        inputSchema: updateTaskSchema
+      },
+      handler: withToolLog('todo_update_task', logger, async ({ id, patch }) => runtime.write(async store => {
+        const task = await store.updateTask(id, patch);
+        if (!task) throw notFoundError();
+        return textResult(mutationEnvelope(store, task));
+      }))
+    },
+    {
+      name: 'todo_complete_task',
+      config: {
+        title: 'Complete TODO task',
+        description: 'Mark a task completed or reopen it.',
+        inputSchema: booleanTaskStateSchema
+      },
+      handler: withToolLog('todo_complete_task', logger, async ({ id, value }) => runtime.write(async store => {
+        const task = await store.updateTask(id, { completed: value, ...(value ? { closed: false } : {}) });
+        if (!task) throw notFoundError();
+        return textResult(mutationEnvelope(store, task));
+      }))
+    },
+    {
+      name: 'todo_close_task',
+      config: {
+        title: 'Close TODO task',
+        description: 'Close or reopen a task without deleting it.',
+        inputSchema: booleanTaskStateSchema
+      },
+      handler: withToolLog('todo_close_task', logger, async ({ id, value }) => runtime.write(async store => {
+        const task = await store.updateTask(id, { closed: value, ...(value ? { completed: false } : {}) });
+        if (!task) throw notFoundError();
+        return textResult(mutationEnvelope(store, task));
+      }))
+    }
+  ];
+}
 
-  server.registerTool('todo_get_task', {
-    title: 'Get TODO task',
-    description: 'Get one personal TODO task by id.',
-    inputSchema: taskIdSchema
-  }, withToolLog('todo_get_task', logger, async ({ id }) => runtime.read(store => {
-    const task = store.publicData().tasks.find(item => item.id === id);
-    if (!task) throw notFoundError();
-    return textResult({
-      ok: true,
-      task,
-      dataVersion: store.data.version,
-      updatedAt: store.data.updatedAt
-    });
-  })));
-
-  server.registerTool('todo_create_task', {
-    title: 'Create TODO task',
-    description: 'Create a personal TODO task.',
-    inputSchema: createTaskSchema
-  }, withToolLog('todo_create_task', logger, async args => runtime.write(async store => {
-    const task = await store.createTask(args);
-    return textResult(mutationEnvelope(store, task));
-  })));
-
-  server.registerTool('todo_update_task', {
-    title: 'Update TODO task',
-    description: 'Update editable fields on a personal TODO task.',
-    inputSchema: updateTaskSchema
-  }, withToolLog('todo_update_task', logger, async ({ id, patch }) => runtime.write(async store => {
-    const task = await store.updateTask(id, patch);
-    if (!task) throw notFoundError();
-    return textResult(mutationEnvelope(store, task));
-  })));
-
-  server.registerTool('todo_complete_task', {
-    title: 'Complete TODO task',
-    description: 'Mark a task completed or reopen it.',
-    inputSchema: booleanTaskStateSchema
-  }, withToolLog('todo_complete_task', logger, async ({ id, value }) => runtime.write(async store => {
-    const task = await store.updateTask(id, { completed: value, ...(value ? { closed: false } : {}) });
-    if (!task) throw notFoundError();
-    return textResult(mutationEnvelope(store, task));
-  })));
-
-  server.registerTool('todo_close_task', {
-    title: 'Close TODO task',
-    description: 'Close or reopen a task without deleting it.',
-    inputSchema: booleanTaskStateSchema
-  }, withToolLog('todo_close_task', logger, async ({ id, value }) => runtime.write(async store => {
-    const task = await store.updateTask(id, { closed: value, ...(value ? { completed: false } : {}) });
-    if (!task) throw notFoundError();
-    return textResult(mutationEnvelope(store, task));
-  })));
+export function registerTodoTools(server, runtime, options) {
+  for (const tool of createTodoTools(runtime, options)) {
+    server.registerTool(tool.name, tool.config, tool.handler);
+  }
 }

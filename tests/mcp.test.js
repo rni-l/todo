@@ -20,6 +20,40 @@ function parseToolPayload(result) {
   return JSON.parse(item.text);
 }
 
+function currentMcpMeta() {
+  return {
+    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientInfo': {
+      name: 'todo-mcp-current-spec-test',
+      version: '1.0.0'
+    },
+    'io.modelcontextprotocol/clientCapabilities': {}
+  };
+}
+
+async function currentMcpRequest(url, token, id, method, params = {}) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      Authorization: `Bearer ${token}`,
+      'MCP-Protocol-Version': '2026-07-28',
+      'Mcp-Method': method,
+      ...(params.name ? { 'Mcp-Name': params.name } : {})
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method,
+      params: {
+        ...params,
+        _meta: currentMcpMeta()
+      }
+    })
+  });
+}
+
 test('store runtime serializes concurrent writes and preserves both changes', async () => {
   const runtimeA = await tempRuntime();
   const runtimeB = new TodoStoreRuntime({ dataDir: runtimeA.store.dataDir });
@@ -34,6 +68,94 @@ test('store runtime serializes concurrent writes and preserves both changes', as
   const titles = runtimeA.store.data.tasks.map(task => task.title);
   assert.ok(titles.includes('write from A'));
   assert.ok(titles.includes('write from B'));
+});
+
+test('MCP HTTP service implements current stateless discovery and tool listing', async () => {
+  const previousToken = process.env.TODO_MCP_TOKEN;
+  process.env.TODO_MCP_TOKEN = 'test-token';
+  const runtime = await tempRuntime();
+  const httpServer = await createMcpHttpServer({ runtime });
+  await new Promise(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+  const address = httpServer.address();
+  const url = `http://127.0.0.1:${address.port}/mcp`;
+
+  try {
+    const discoverResponse = await currentMcpRequest(url, 'test-token', 'discover-1', 'server/discover');
+    assert.equal(discoverResponse.status, 200);
+    const discover = await discoverResponse.json();
+    assert.equal(discover.result.resultType, 'complete');
+    assert.ok(discover.result.supportedVersions.includes('2026-07-28'));
+    assert.deepEqual(discover.result.capabilities, { tools: {} });
+    assert.equal(discover.result._meta['io.modelcontextprotocol/serverInfo'].name, 'personal-todo');
+
+    const toolsResponse = await currentMcpRequest(url, 'test-token', 'tools-1', 'tools/list');
+    assert.equal(toolsResponse.status, 200);
+    const tools = await toolsResponse.json();
+    assert.equal(tools.result.resultType, 'complete');
+    const createTool = tools.result.tools.find(tool => tool.name === 'todo_create_task');
+    assert.ok(createTool);
+    assert.equal(createTool.inputSchema.type, 'object');
+    assert.ok(createTool.inputSchema.properties.title);
+
+    const callResponse = await currentMcpRequest(url, 'test-token', 'call-1', 'tools/call', {
+      name: 'todo_create_task',
+      arguments: { title: 'Current MCP task' }
+    });
+    assert.equal(callResponse.status, 200);
+    const call = await callResponse.json();
+    assert.equal(call.result.resultType, 'complete');
+    assert.equal(parseToolPayload(call.result).task.title, 'Current MCP task');
+
+    const missingHeadersResponse = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'invalid-headers',
+        method: 'tools/list',
+        params: { _meta: currentMcpMeta() }
+      })
+    });
+    assert.equal(missingHeadersResponse.status, 400);
+    assert.equal((await missingHeadersResponse.json()).error.code, -32020);
+
+    const unsupportedMeta = currentMcpMeta();
+    unsupportedMeta['io.modelcontextprotocol/protocolVersion'] = '1900-01-01';
+    const unsupportedVersionResponse = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        Authorization: 'Bearer test-token',
+        'MCP-Protocol-Version': '1900-01-01',
+        'Mcp-Method': 'server/discover'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'unsupported-version',
+        method: 'server/discover',
+        params: { _meta: unsupportedMeta }
+      })
+    });
+    assert.equal(unsupportedVersionResponse.status, 400);
+    const unsupportedVersion = await unsupportedVersionResponse.json();
+    assert.equal(unsupportedVersion.error.code, -32022);
+    assert.ok(unsupportedVersion.error.data.supported.includes('2026-07-28'));
+
+    const unknownMethodResponse = await currentMcpRequest(url, 'test-token', 'unknown-1', 'todo/unknown');
+    assert.equal(unknownMethodResponse.status, 404);
+    assert.equal((await unknownMethodResponse.json()).error.code, -32601);
+  } finally {
+    await new Promise(resolve => httpServer.close(resolve));
+    if (previousToken === undefined) {
+      delete process.env.TODO_MCP_TOKEN;
+    } else {
+      process.env.TODO_MCP_TOKEN = previousToken;
+    }
+  }
 });
 
 test('MCP HTTP service exposes authorized task tools', async () => {

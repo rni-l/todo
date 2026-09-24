@@ -3,11 +3,12 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { TodoStoreRuntime } from '../storeRuntime.js';
 import { createMcpLogger, createRequestId, summarizeRpcBody } from './logger.js';
-import { registerTodoTools } from './tools.js';
+import { createTodoTools, registerTodoTools } from './tools.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -16,6 +17,8 @@ const host = process.env.TODO_MCP_HOST || '127.0.0.1';
 const port = Number(process.env.TODO_MCP_PORT || 38888);
 const endpoint = '/mcp';
 const maxBodyBytes = 2 * 1024 * 1024;
+const currentProtocolVersion = '2026-07-28';
+const supportedProtocolVersions = [currentProtocolVersion, '2025-11-25'];
 
 function json(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
@@ -28,12 +31,16 @@ function json(res, status, payload, headers = {}) {
   res.end(body);
 }
 
-function rpcError(res, status, code, message, id = null) {
+function rpcError(res, status, code, message, id = null, data) {
   json(res, status, {
     jsonrpc: '2.0',
-    error: { code, message },
+    error: { code, message, ...(data === undefined ? {} : { data }) },
     id
   });
+}
+
+function rpcResult(res, result, id) {
+  json(res, 200, { jsonrpc: '2.0', result, id });
 }
 
 async function readJson(req) {
@@ -87,6 +94,141 @@ function createServer(runtime, logger) {
   });
   registerTodoTools(server, runtime, { logger });
   return server;
+}
+
+function headerValue(req, name) {
+  const value = req.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function decodeMcpHeader(value) {
+  if (typeof value !== 'string') return value;
+  const match = /^=\?base64\?([A-Za-z0-9+/]*={0,2})\?=$/.exec(value);
+  if (!match) return value;
+  return Buffer.from(match[1], 'base64').toString('utf8');
+}
+
+function isModernMcpRequest(body) {
+  return Boolean(body?.params?._meta?.['io.modelcontextprotocol/protocolVersion']);
+}
+
+function isValidModernMetadata(meta) {
+  const clientInfo = meta?.['io.modelcontextprotocol/clientInfo'];
+  const clientCapabilities = meta?.['io.modelcontextprotocol/clientCapabilities'];
+  return Boolean(
+    clientInfo &&
+    typeof clientInfo.name === 'string' &&
+    typeof clientInfo.version === 'string' &&
+    clientCapabilities &&
+    typeof clientCapabilities === 'object' &&
+    !Array.isArray(clientCapabilities)
+  );
+}
+
+function protocolVersionError(res, id, requested) {
+  rpcError(res, 400, -32022, 'Unsupported protocol version', id, {
+    supported: supportedProtocolVersions,
+    requested
+  });
+}
+
+function currentMcpTools(runtime, logger) {
+  return createTodoTools(runtime, { logger }).map(tool => {
+    const inputValidator = z.object(tool.config.inputSchema);
+    return {
+      ...tool,
+      inputValidator,
+      definition: {
+        name: tool.name,
+        title: tool.config.title,
+        description: tool.config.description,
+        inputSchema: z.toJSONSchema(inputValidator)
+      }
+    };
+  });
+}
+
+function toolError(message) {
+  return {
+    resultType: 'complete',
+    content: [{ type: 'text', text: message }],
+    isError: true
+  };
+}
+
+async function handleCurrentMcpRequest(req, res, body, runtime, logger) {
+  const id = body?.id ?? null;
+  const meta = body?.params?._meta;
+  const protocolVersion = meta?.['io.modelcontextprotocol/protocolVersion'];
+  const versionHeader = headerValue(req, 'mcp-protocol-version');
+  const methodHeader = headerValue(req, 'mcp-method');
+
+  if (!versionHeader || !methodHeader || versionHeader !== protocolVersion || methodHeader !== body?.method) {
+    rpcError(res, 400, -32020, 'Header mismatch', id);
+    return;
+  }
+
+  if (protocolVersion !== currentProtocolVersion) {
+    protocolVersionError(res, id, protocolVersion);
+    return;
+  }
+
+  if (!isValidModernMetadata(meta)) {
+    rpcError(res, 400, -32602, 'Invalid request metadata', id);
+    return;
+  }
+
+  if (body?.method === 'server/discover') {
+    rpcResult(res, {
+      resultType: 'complete',
+      supportedVersions: supportedProtocolVersions,
+      capabilities: { tools: {} },
+      _meta: {
+        'io.modelcontextprotocol/serverInfo': {
+          name: 'personal-todo',
+          version: packageJson.version || '0.0.0'
+        }
+      },
+      instructions: 'This server provides tools to list and update personal TODO tasks.'
+    }, id);
+    return;
+  }
+
+  const tools = currentMcpTools(runtime, logger);
+  if (body?.method === 'tools/list') {
+    rpcResult(res, {
+      resultType: 'complete',
+      tools: tools.map(tool => tool.definition)
+    }, id);
+    return;
+  }
+
+  if (body?.method === 'tools/call') {
+    const name = body.params?.name;
+    if (decodeMcpHeader(headerValue(req, 'mcp-name')) !== name) {
+      rpcError(res, 400, -32020, 'Header mismatch', id);
+      return;
+    }
+    const tool = tools.find(item => item.name === name);
+    if (!tool) {
+      rpcResult(res, toolError(`Unknown tool: ${name || '(missing name)'}`), id);
+      return;
+    }
+    const parsedArguments = tool.inputValidator.safeParse(body.params?.arguments ?? {});
+    if (!parsedArguments.success) {
+      rpcResult(res, toolError('Invalid tool arguments'), id);
+      return;
+    }
+    try {
+      const result = await tool.handler(parsedArguments.data);
+      rpcResult(res, { resultType: 'complete', ...result }, id);
+    } catch (error) {
+      rpcResult(res, toolError(error.message || 'tool_failed'), id);
+    }
+    return;
+  }
+
+  rpcError(res, 404, -32601, 'Method not found', id);
 }
 
 export async function createMcpHttpServer({
@@ -155,6 +297,10 @@ export async function createMcpHttpServer({
         requestId,
         ...summarizeRpcBody(body)
       });
+      if (isModernMcpRequest(body)) {
+        await handleCurrentMcpRequest(req, res, body, runtime, logger);
+        return;
+      }
       const mcp = createServer(runtime, logger);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
