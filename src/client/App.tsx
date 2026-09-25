@@ -34,6 +34,8 @@ import {
   closedTasks,
   conditionFieldLabel,
   countOpenByProject,
+  type CompletedRange,
+  filterCompletedTasks,
   filterSummary,
   filterTasks,
   groupedFilterTasks,
@@ -726,11 +728,7 @@ function MainView({ state, actions }: { state: ReadyState; actions: AppActions }
     case 'filter':
       return <FilterView state={state} actions={actions} />;
     case 'completed':
-      return <TaskListView state={state} actions={actions} eyebrow="COMPLETED · 完成记录" title="已完成" subtitle="查看和恢复已完成任务。恢复后任务回到原项目和原日期。" stats={completedStats(data)} quickContext={{}} placeholder="添加任务" groups={[
-        group('今天', data.tasks.filter(task => task.completed && isoDay(task.completedAt) === todayISO()), 'success'),
-        group('本周', data.tasks.filter(task => task.completed && isoDay(task.completedAt) >= todayISO(-7) && isoDay(task.completedAt) !== todayISO()), ''),
-        group('更早', data.tasks.filter(task => task.completed && isoDay(task.completedAt) < todayISO(-7)), 'muted'),
-      ]} />;
+      return <CompletedView state={state} actions={actions} />;
     case 'closed':
       return <TaskListView state={state} actions={actions} eyebrow="CLOSED · 取消记录" title="已关闭" subtitle="关闭表示任务不再处理，不等于完成；恢复后任务会回到未完成视图。" stats={closedStats(data)} quickContext={{}} placeholder="添加任务" groups={[
         group('今天', closedTasks(data).filter(task => isoDay(task.closedAt) === todayISO()), 'warn'),
@@ -744,7 +742,7 @@ function MainView({ state, actions }: { state: ReadyState; actions: AppActions }
   }
 }
 
-function TaskListView({ state, actions, eyebrow, title, subtitle, stats, quickContext, placeholder, groups, extraActions }: {
+function TaskListView({ state, actions, eyebrow, title, subtitle, stats, quickContext, placeholder, groups, extraActions, toolbar }: {
   state: ReadyState;
   actions: AppActions;
   eyebrow: string;
@@ -755,11 +753,13 @@ function TaskListView({ state, actions, eyebrow, title, subtitle, stats, quickCo
   placeholder: string;
   groups: ViewGroup[];
   extraActions?: ReactNode;
+  toolbar?: ReactNode;
 }) {
   return (
     <>
       <PageHeader state={state} actions={actions} eyebrow={eyebrow} title={title} subtitle={subtitle} extraActions={extraActions} />
       <Stats items={stats} />
+      {toolbar}
       <QuickAdd actions={actions} placeholder={placeholder} context={quickContext} />
       <section className="task-board">
         {groups.map(item => <TaskGroup key={item.id || item.title} state={state} actions={actions} item={item} />)}
@@ -934,6 +934,67 @@ function completedStats(data: PublicData): StatItem[] {
     { value: completed.filter(task => isoDay(task.completedAt) >= todayISO(-7)).length, label: '本周完成' },
     { value: completed.filter(task => task.attachments?.length).length, label: '含附件' },
   ];
+}
+
+function CompletedView({ state, actions }: { state: ReadyState; actions: AppActions }) {
+  const [keyword, setKeyword] = useState('');
+  const [range, setRange] = useState<CompletedRange>('all');
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [order, setOrder] = useState<'desc' | 'asc'>('desc');
+  const today = todayISO();
+  const weekAgo = todayISO(-7);
+  const searching = Boolean(keyword.trim()) || range !== 'all';
+  const completedDesc = filterCompletedTasks(state.data.tasks, { keyword, range, from: rangeFrom, to: rangeTo }, today)
+    .sort((a, b) => String(b.completedAt || '').localeCompare(String(a.completedAt || '')));
+  const ordered = order === 'desc' ? completedDesc : [...completedDesc].reverse();
+  const groups: ViewGroup[] = [
+    { id: 'completed-today', title: '今天', tone: 'success', tasks: ordered.filter(task => isoDay(task.completedAt) === today) },
+    { id: 'completed-week', title: '本周', tone: '', tasks: ordered.filter(task => {
+      const day = isoDay(task.completedAt);
+      return day !== today && day >= weekAgo;
+    }) },
+    { id: 'completed-earlier', title: '更早', tone: 'muted', tasks: ordered.filter(task => isoDay(task.completedAt) < weekAgo) },
+  ];
+  if (order === 'asc') groups.reverse();
+
+  return <TaskListView
+    state={state}
+    actions={actions}
+    eyebrow="COMPLETED · 完成记录"
+    title="已完成"
+    subtitle={searching ? `筛选出 ${ordered.length} 条完成记录，支持关键词和时间区间组合搜索。` : '查看和恢复已完成任务。恢复后任务回到原项目和原日期。'}
+    stats={completedStats(state.data)}
+    quickContext={{}}
+    placeholder="添加任务"
+    groups={groups}
+    toolbar={<div className="list-toolbar">
+      <input
+        className="input list-toolbar-search"
+        value={keyword}
+        onChange={event => setKeyword(event.target.value)}
+        placeholder="搜索已完成任务标题"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <select className="select" value={range} onChange={event => setRange(event.target.value as CompletedRange)} aria-label="完成时间范围">
+        <option value="all">全部时间</option>
+        <option value="today">今天</option>
+        <option value="week">最近7天</option>
+        <option value="month">最近30天</option>
+        <option value="custom">自定义区间</option>
+      </select>
+      {range === 'custom' ? <>
+        <input className="input list-toolbar-date" type="date" value={rangeFrom} onChange={event => setRangeFrom(event.target.value)} aria-label="开始日期" />
+        <span className="list-toolbar-sep">至</span>
+        <input className="input list-toolbar-date" type="date" value={rangeTo} onChange={event => setRangeTo(event.target.value)} aria-label="结束日期" />
+      </> : null}
+      <div className="segmented">
+        <button className={order === 'desc' ? 'active' : ''} type="button" onClick={() => setOrder('desc')}>最新在前</button>
+        <button className={order === 'asc' ? 'active' : ''} type="button" onClick={() => setOrder('asc')}>最早在前</button>
+      </div>
+    </div>}
+  />;
 }
 
 function closedStats(data: PublicData): StatItem[] {

@@ -1,5 +1,5 @@
 import type { Attachment, Project, PublicData, SmartFilter, SmartFilterCondition, Task, TaskGroupModel } from '../types.ts';
-import { getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange, todayISO } from './dates.ts';
+import { addDays, getTaskDateStatus, shouldShowInRecentView, taskCoversDate, taskDateRange, todayISO } from './dates.ts';
 import { groupLabel, priorityLabel, priorityMeta, sortLabel } from './format.ts';
 
 export function openTasks(data: PublicData) {
@@ -16,6 +16,34 @@ export function closedTasks(data: PublicData) {
   return data.tasks
     .filter(task => task.closed)
     .sort((a, b) => String(b.closedAt || '').localeCompare(String(a.closedAt || '')));
+}
+
+export type CompletedRange = 'all' | 'today' | 'week' | 'month' | 'custom';
+
+export interface CompletedQuery {
+  keyword?: string;
+  range?: CompletedRange;
+  from?: string;
+  to?: string;
+}
+
+export function filterCompletedTasks(tasks: Task[], query: CompletedQuery = {}, today = todayISO()) {
+  const keyword = String(query.keyword || '').trim().toLowerCase();
+  const range = query.range || 'all';
+  const from = range === 'custom' ? String(query.from || '') : '';
+  const to = range === 'custom' ? String(query.to || '') : '';
+  return tasks.filter(task => {
+    if (!task.completed) return false;
+    const day = String(task.completedAt || '').slice(0, 10);
+    if (!day) return false;
+    if (range === 'today' && day !== today) return false;
+    if (range === 'week' && day < addDays(today, -7)) return false;
+    if (range === 'month' && day < addDays(today, -30)) return false;
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    if (keyword && !task.title.toLowerCase().includes(keyword)) return false;
+    return true;
+  });
 }
 
 export function sortTasks(tasks: Task[]) {
