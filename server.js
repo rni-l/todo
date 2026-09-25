@@ -356,6 +356,7 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/data') {
     await runtime.reload();
+    if (macQuick) await macQuick.ensureGrant();
     json(res, 200, store.publicData());
     return;
   }

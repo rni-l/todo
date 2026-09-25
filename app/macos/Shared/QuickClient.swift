@@ -12,8 +12,10 @@ struct QuickSnapshot: Codable {
     let updatedAt: String
     let overdueCount: Int
     let todayCount: Int
+    let upcomingCount: Int
     let overdue: [QuickTask]
     let today: [QuickTask]
+    let upcoming: [QuickTask]
 }
 
 enum QuickError: LocalizedError {

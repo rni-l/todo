@@ -27,12 +27,17 @@ function quickTask(task) {
 export function macQuickSummary(data, today = localDay()) {
   const overdue = [];
   const todayTasks = [];
+  const upcoming = [];
+  const lastUpcomingDate = new Date(`${today}T12:00:00`);
+  lastUpcomingDate.setDate(lastUpcomingDate.getDate() + 7);
+  const upcomingEnd = localDay(lastUpcomingDate);
   for (const task of data.tasks) {
     if (task.completed || task.closed) continue;
     const [start, end] = dateRange(task);
     if (!start || !end) continue;
     if (end < today) overdue.push(task);
     else if (start <= today && today <= end) todayTasks.push(task);
+    else if (start <= upcomingEnd) upcoming.push(task);
   }
   const rank = { high: 3, medium: 2, low: 1, none: 0 };
   const sort = (a, b) => (rank[b.priority] || 0) - (rank[a.priority] || 0)
@@ -40,13 +45,16 @@ export function macQuickSummary(data, today = localDay()) {
     || (a.order || 0) - (b.order || 0);
   overdue.sort(sort);
   todayTasks.sort(sort);
+  upcoming.sort(sort);
   return {
     date: today,
     updatedAt: data.updatedAt,
     overdueCount: overdue.length,
     todayCount: todayTasks.length,
+    upcomingCount: upcoming.length,
     overdue: overdue.slice(0, 20).map(quickTask),
-    today: todayTasks.slice(0, 20).map(quickTask)
+    today: todayTasks.map(quickTask),
+    upcoming: upcoming.map(quickTask)
   };
 }
 
@@ -78,6 +86,10 @@ export class MacQuickAccess {
       authFingerprint: this.fingerprint(),
       tokenFingerprint: digest(this.token)
     }), { mode: 0o600 });
+  }
+
+  async ensureGrant() {
+    if (!await this.authorized(`Bearer ${this.token}`)) await this.grant();
   }
 
   async revoke() {

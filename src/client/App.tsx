@@ -488,9 +488,12 @@ export function App() {
     };
     window.addEventListener('hashchange', onHashChange);
     window.addEventListener('keydown', onKeyDown);
+    const onNativeRefresh = () => { actions.loadData().catch(() => {}); };
+    window.addEventListener('todo:refresh', onNativeRefresh);
     return () => {
       window.removeEventListener('hashchange', onHashChange);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('todo:refresh', onNativeRefresh);
     };
   }, []);
 

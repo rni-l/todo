@@ -85,7 +85,11 @@ private struct TodoWebView: NSViewRepresentable {
                 forName: NSApplication.didBecomeActiveNotification,
                 object: nil,
                 queue: .main
-            ) { [weak view] _ in view?.reload() }
+            ) { [weak self, weak view] _ in self?.refreshData(in: view) }
+        }
+
+        func refreshData(in view: WKWebView?) {
+            view?.evaluateJavaScript("window.dispatchEvent(new Event('todo:refresh'))")
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -139,7 +143,7 @@ private struct TodoWebView: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         if refreshRequest != context.coordinator.lastRefresh {
             context.coordinator.lastRefresh = refreshRequest
-            view.reload()
+            context.coordinator.refreshData(in: view)
         }
         if quickAddRequest != context.coordinator.lastQuickAdd {
             context.coordinator.lastQuickAdd = quickAddRequest
@@ -157,25 +161,54 @@ private struct MenuPanel: View {
     @State private var message = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("今日任务").font(.headline)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 21))
+                    .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("个人 TODO").font(.headline)
+                    Text("今天与未来 7 天").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("打开主窗口") {
+                Button {
                     openWindow(id: "main")
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
                 }
+                .buttonStyle(.borderless)
+                .help("打开主窗口")
             }
+            .padding(.bottom, 14)
             if let snapshot {
-                Text("今天 \(snapshot.todayCount) · 逾期 \(snapshot.overdueCount)")
-                    .font(.caption).foregroundStyle(.secondary)
-                taskList("已逾期", tasks: snapshot.overdue)
-                taskList("今天", tasks: snapshot.today)
-                if snapshot.today.isEmpty && snapshot.overdue.isEmpty {
-                    Text("今天没有待办任务").foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    countBadge("今天", count: snapshot.todayCount, color: .green)
+                    countBadge("未来 7 天", count: snapshot.upcomingCount, color: .blue)
+                    if snapshot.overdueCount > 0 {
+                        countBadge("逾期", count: snapshot.overdueCount, color: .red)
+                    }
                 }
+                .padding(.bottom, 12)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        taskList("已逾期", tasks: snapshot.overdue, color: .red)
+                        taskList("今天", tasks: snapshot.today, color: .green)
+                        taskList("未来 7 天", tasks: snapshot.upcoming, color: .blue, showDate: true)
+                        if snapshot.todayCount == 0 && snapshot.overdueCount == 0 && snapshot.upcomingCount == 0 {
+                            Text("今天和未来 7 天都没有待办任务")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 28)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: taskListHeight(for: snapshot))
+                Divider().padding(.vertical, 12)
                 HStack {
                     TextField("添加今天的任务", text: $title)
+                        .textFieldStyle(.roundedBorder)
                         .onSubmit { Task { await addTask() } }
                     Button("添加") { Task { await addTask() } }
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -191,31 +224,79 @@ private struct MenuPanel: View {
             if !message.isEmpty && snapshot != nil {
                 Text(message).font(.caption).foregroundStyle(.red)
             }
-            Divider()
+            Divider().padding(.vertical, 12)
             HStack {
-                Button("刷新") { Task { await refresh() } }
+                Button {
+                    Task { await refresh() }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
                 Spacer()
                 Button("退出应用") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.borderless)
             }
         }
-        .padding(16)
-        .frame(width: 350)
+        .padding(18)
+        .frame(width: 380)
         .task { await refresh() }
+        .onChange(of: runtime.ready) { _, ready in
+            if ready { Task { await refresh() } }
+        }
+    }
+
+    private func countBadge(_ title: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text("\(title) \(count)")
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.11), in: Capsule())
+    }
+
+    private func taskListHeight(for snapshot: QuickSnapshot) -> CGFloat {
+        let taskCount = snapshot.overdue.count + snapshot.today.count + snapshot.upcoming.count
+        let sectionCount = [snapshot.overdue, snapshot.today, snapshot.upcoming].filter { !$0.isEmpty }.count
+        return CGFloat(min(340, max(82, taskCount * 36 + sectionCount * 30 + 16)))
     }
 
     @ViewBuilder
-    private func taskList(_ heading: String, tasks: [QuickTask]) -> some View {
+    private func taskList(_ heading: String, tasks: [QuickTask], color: Color, showDate: Bool = false) -> some View {
         if !tasks.isEmpty {
-            Text(heading).font(.caption.bold()).foregroundStyle(.secondary)
-            ForEach(tasks.prefix(6)) { task in
-                Button {
-                    Task { await complete(task.id) }
-                } label: {
-                    Label(task.title, systemImage: "circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(heading).font(.caption.bold()).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(tasks.count)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
+                .padding(.bottom, 4)
+                ForEach(tasks) { task in
+                    Button {
+                        Task { await complete(task.id) }
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "circle")
+                                .font(.system(size: 17))
+                                .foregroundStyle(color)
+                            Text(task.title)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 4)
+                            if showDate, let dueDate = task.dueDate {
+                                Text(String(dueDate.suffix(5)))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("完成：\(task.title)")
+                }
             }
         }
     }

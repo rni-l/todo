@@ -26,6 +26,23 @@ test('mac quick summary matches today and overdue date ranges without duplicates
   assert.equal(summary.todayCount, 1);
 });
 
+test('mac quick summary includes every today task and the next seven days', () => {
+  const tasks = Array.from({ length: 8 }, (_, index) => ({
+    id: `today-${index}`, title: `Today ${index}`, dueDate: '2026-09-25', priority: 'none'
+  }));
+  tasks.push(
+    { id: 'tomorrow', title: 'Tomorrow', dueDate: '2026-09-26', priority: 'none' },
+    { id: 'last-day', title: 'Last day', dueDate: '2026-10-02', priority: 'none' },
+    { id: 'outside', title: 'Outside', dueDate: '2026-10-03', priority: 'none' },
+    { id: 'spanning', title: 'Spanning', startDate: '2026-09-24', dueDate: '2026-09-27', priority: 'none' }
+  );
+  const summary = macQuickSummary({ updatedAt: '', tasks }, '2026-09-25');
+  assert.equal(summary.todayCount, 9);
+  assert.equal(summary.today.length, 9);
+  assert.deepEqual(summary.upcoming.map(task => task.id), ['tomorrow', 'last-day']);
+  assert.equal(summary.upcomingCount, 2);
+});
+
 test('mac quick access requires a grant and invalidates it after password change', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'todo-mac-quick-'));
   const runtime = new TodoStoreRuntime({ dataDir });
@@ -88,6 +105,10 @@ test('mac quick HTTP routes require local token and a prior login', async () => 
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get('set-cookie').split(';')[0];
+    assert.equal((await fetch(`${base}/api/mac/quick`, { headers: authHeader })).status, 200);
+    await fs.writeFile(path.join(stateDir, 'mac-quick-grant.json'), '{}');
+    assert.equal((await fetch(`${base}/api/mac/quick`, { headers: authHeader })).status, 401);
+    assert.equal((await fetch(`${base}/api/data`, { headers: { Cookie: cookie } })).status, 200);
     assert.equal((await fetch(`${base}/api/mac/quick`, { headers: authHeader })).status, 200);
     assert.equal((await fetch(`${base}/api/mac/quick`, { headers: { Authorization: 'Bearer wrong' } })).status, 401);
     assert.equal((await fetch(`${base}/api/mac/quick`, { headers: { ...authHeader, Origin: 'https://example.com' } })).status, 403);
