@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="个人 TODO">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#166f7d"/>
+      <stop offset="1" stop-color="#0b5363"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9f5f5"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="76" width="896" height="896" rx="202" fill="#122f3d" opacity=".15"/>
+  <rect x="64" y="56" width="896" height="896" rx="202" fill="url(#tile)"/>
+  <path d="M266 56h492c111 0 202 91 202 202v48H64v-48C64 147 155 56 266 56Z" fill="#ffffff" opacity=".08"/>
+  <rect x="242" y="208" width="540" height="608" rx="82" fill="#073f50" opacity=".25"/>
+  <rect x="242" y="194" width="540" height="608" rx="82" fill="url(#paper)"/>
+  <path d="M337 376h166" fill="none" stroke="#b9d8dc" stroke-width="34" stroke-linecap="round"/>
+  <path d="M337 470h100" fill="none" stroke="#b9d8dc" stroke-width="34" stroke-linecap="round"/>
+  <path d="m338 612 94 96 239-260" fill="none" stroke="#08798a" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

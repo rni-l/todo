@@ -33,7 +33,7 @@ function run(command, args) {
 function infoPlist({ executable, identifier, packageType, extension = false }) {
   const extensionBlock = extension
     ? '<key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>'
-    : '<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>TodoMac Quick Add</string><key>CFBundleURLSchemes</key><array><string>myselftodo</string></array></dict></array><key>NSHighResolutionCapable</key><true/>';
+    : '<key>CFBundleIconFile</key><string>TodoMac</string><key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>TodoMac Quick Add</string><key>CFBundleURLSchemes</key><array><string>myselftodo</string></array></dict></array><key>NSHighResolutionCapable</key><true/>';
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleDevelopmentRegion</key><string>zh_CN</string><key>CFBundleExecutable</key><string>${executable}</string><key>CFBundleIdentifier</key><string>${identifier}</string><key>CFBundleInfoDictionaryVersion</key><string>6.0</string><key>CFBundleName</key><string>${executable}</string><key>CFBundlePackageType</key><string>${packageType}</string><key>CFBundleShortVersionString</key><string>1.0</string><key>CFBundleVersion</key><string>1</string><key>LSMinimumSystemVersion</key><string>14.0</string>${extensionBlock}</dict></plist>\n`;
 }
 
@@ -86,15 +86,18 @@ compile('TodoWidget', [...shared, 'app/macos/Widget/TodoWidget.swift'], path.joi
 compile('TodoMac', [...shared, 'app/macos/App/RuntimeController.swift', 'app/macos/App/TodoMacApp.swift'], path.join(app, 'Contents/MacOS/TodoMac'));
 
 await fs.writeFile(path.join(app, 'Contents/Info.plist'), infoPlist({ executable: 'TodoMac', identifier: 'com.ddd.personaltodo.mac', packageType: 'APPL' }));
+await fs.writeFile(path.join(app, 'Contents/PkgInfo'), 'APPL????');
 await fs.writeFile(path.join(widget, 'Contents/Info.plist'), infoPlist({ executable: 'TodoWidget', identifier: 'com.ddd.personaltodo.mac.widget', packageType: 'XPC!', extension: true }));
 await fs.cp(runtime, path.join(app, 'Contents/Resources/Runtime'), { recursive: true });
 await fs.copyFile(path.join(generated, 'node'), path.join(app, 'Contents/Resources/node'));
 await fs.chmod(path.join(app, 'Contents/Resources/node'), 0o755);
 await fs.copyFile(path.join(generated, 'QuickAccess.json'), path.join(app, 'Contents/Resources/QuickAccess.json'));
 await fs.copyFile(path.join(generated, 'QuickAccess.json'), path.join(widget, 'Contents/Resources/QuickAccess.json'));
+await fs.copyFile(path.join(root, 'app/macos/App/TodoMac.icns'), path.join(app, 'Contents/Resources/TodoMac.icns'));
 
 run('/usr/bin/codesign', ['--force', '--sign', '-', path.join(app, 'Contents/Resources/node')]);
 run('/usr/bin/codesign', ['--force', '--sign', '-', '--entitlements', path.join(root, 'app/macos/Widget/TodoWidget.entitlements'), widget]);
 run('/usr/bin/codesign', ['--force', '--sign', '-', app]);
 run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
+spawnSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', app], { stdio: 'ignore' });
 console.log(`Built ${app}`);
